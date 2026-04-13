@@ -1,0 +1,15 @@
+# Default ownership
+* @mdheller
+
+# Specs and ADRs
+/docs/ @mdheller
+
+# Contracts and schemas
+/packages/contracts/ @mdheller
+/packages/schemas/ @mdheller
+
+# Services
+/services/ @mdheller
+
+# Infrastructure
+/infra/ @mdheller
