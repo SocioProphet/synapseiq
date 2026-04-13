@@ -1,0 +1,15 @@
+{
+  "title": "SynapseIQMappingPayload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["mapping_type", "target"],
+  "properties": {
+    "mapping_type": { "type": "string" },
+    "target": { "type": "string" },
+    "source_fields": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "attributes": { "type": ["object", "null"] }
+  }
+}
