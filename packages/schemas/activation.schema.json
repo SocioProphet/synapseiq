@@ -1,0 +1,12 @@
+{
+  "title": "SynapseIQActivationPayload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["destination_type"],
+  "properties": {
+    "destination_type": { "type": "string" },
+    "destination_id": { "type": ["string", "null"] },
+    "action": { "type": ["string", "null"] },
+    "attributes": { "type": ["object", "null"] }
+  }
+}
