@@ -1,0 +1,20 @@
+{
+  "name": "@socioprophet/synapseiq-reasoning-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "lint": "echo 'lint not yet configured'",
+    "test": "echo 'tests not yet configured'",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@socioprophet/synapseiq-contracts": "workspace:*",
+    "@socioprophet/synapseiq-enrichment": "workspace:*"
+  }
+}
