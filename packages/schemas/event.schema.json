@@ -1,0 +1,13 @@
+{
+  "title": "SynapseIQEventPayload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["event_type"],
+  "properties": {
+    "event_type": { "type": "string" },
+    "subject_entity_id": { "type": ["string", "null"] },
+    "object_entity_id": { "type": ["string", "null"] },
+    "location_entity_id": { "type": ["string", "null"] },
+    "attributes": { "type": ["object", "null"] }
+  }
+}
