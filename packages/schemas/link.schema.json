@@ -1,0 +1,12 @@
+{
+  "title": "SynapseIQLinkPayload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["link_type", "from_entity_id", "to_entity_id"],
+  "properties": {
+    "link_type": { "type": "string" },
+    "from_entity_id": { "type": "string" },
+    "to_entity_id": { "type": "string" },
+    "attributes": { "type": ["object", "null"] }
+  }
+}
