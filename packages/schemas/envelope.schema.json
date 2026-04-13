@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://socioprophet.ai/synapseiq/schemas/envelope.schema.json",
+  "title": "SynapseIQCanonicalEnvelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "envelope_version",
+    "record_kind",
+    "record_stage",
+    "record_id",
+    "record_ts",
+    "source",
+    "provenance",
+    "canonical"
+  ],
+  "properties": {
+    "envelope_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "record_kind": {
+      "type": "string",
+      "enum": ["event", "entity", "link", "mapping", "finding", "activation"]
+    },
+    "record_stage": {
+      "type": "string",
+      "enum": ["raw", "normalized", "enriched", "validated", "inferred", "activated"]
+    },
+    "record_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "record_ts": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_id", "source_type"],
+      "properties": {
+        "source_id": { "type": "string", "minLength": 1 },
+        "source_type": { "type": "string", "minLength": 1 },
+        "source_record_id": { "type": ["string", "null"] },
+        "source_url": { "type": ["string", "null"], "format": "uri" },
+        "source_version": { "type": ["string", "null"] }
+      }
+    },
+    "transport": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "transport_id": { "type": ["string", "null"] },
+        "topic": { "type": ["string", "null"] },
+        "partition": { "type": ["integer", "null"] },
+        "offset": { "type": ["integer", "null"] },
+        "trace_id": { "type": ["string", "null"] },
+        "correlation_id": { "type": ["string", "null"] }
+      }
+    },
+    "policy": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "policy_version": { "type": ["string", "null"] },
+        "consent_mode": { "type": ["string", "null"] },
+        "classification": { "type": ["string", "null"] },
+        "redactions_applied": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "retention_class": { "type": ["string", "null"] }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ingested_at", "processed_at", "processor", "method"],
+      "properties": {
+        "ingested_at": { "type": "string", "format": "date-time" },
+        "processed_at": { "type": "string", "format": "date-time" },
+        "processor": { "type": "string", "minLength": 1 },
+        "processor_version": { "type": ["string", "null"] },
+        "method": { "type": "string", "enum": ["rule", "model", "hybrid", "manual"] },
+        "inputs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "run_id": { "type": ["string", "null"] },
+        "trace_id": { "type": ["string", "null"] }
+      }
+    },
+    "confidence": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "overall": { "type": ["number", "null"], "minimum": 0.0, "maximum": 1.0 },
+        "field_confidence": { "type": ["object", "null"] },
+        "explanation_ref": { "type": ["string", "null"] }
+      }
+    },
+    "canonical": {
+      "type": "object"
+    },
+    "source_native": {
+      "type": ["object", "null"]
+    },
+    "explanations": {
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "errors": {
+      "type": "array",
+      "items": { "type": "object" }
+    }
+  }
+}
