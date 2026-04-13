@@ -1,0 +1,12 @@
+{
+  "title": "SynapseIQEntityPayload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["entity_type"],
+  "properties": {
+    "entity_type": { "type": "string" },
+    "display_name": { "type": ["string", "null"] },
+    "normalized_name": { "type": ["string", "null"] },
+    "attributes": { "type": ["object", "null"] }
+  }
+}
