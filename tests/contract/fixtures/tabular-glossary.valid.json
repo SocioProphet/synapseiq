@@ -1,0 +1,9 @@
+{
+  "table_name": "COMMUNICATION",
+  "column_name": "PLN_END_DT",
+  "column_description": "The date on which the communication is planned to be completed.",
+  "glossary_candidates": [
+    "Communication Expected End Date",
+    "Planned End Date"
+  ]
+}
