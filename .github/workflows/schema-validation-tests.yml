@@ -1,0 +1,23 @@
+name: schema-validation-tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  schema-validation-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.6.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Run schema validation tests
+        run: pnpm --filter @socioprophet/synapseiq-schema-validation-tests test
