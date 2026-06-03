@@ -1,0 +1,42 @@
+version: v1
+status: draft
+owner: synapseiq
+strategies:
+  weighted_provider_public_baseline:
+    description: Combine provider aggregate signal confidence with public or open baseline agreement.
+    inputs:
+      - provider_signal_score
+      - public_baseline_agreement
+      - aggregation_floor_quality
+      - lineage_completeness
+    default_weights:
+      provider_signal_score: 0.4
+      public_baseline_agreement: 0.25
+      aggregation_floor_quality: 0.2
+      lineage_completeness: 0.15
+  weighted_corridor_public_baseline:
+    description: Corridor-focused confidence strategy for traffic, truck, and infrastructure siting packages.
+    inputs:
+      - provider_corridor_score
+      - road_reference_match
+      - temporal_stability
+      - event_adjustment_quality
+      - lineage_completeness
+    default_weights:
+      provider_corridor_score: 0.35
+      road_reference_match: 0.2
+      temporal_stability: 0.2
+      event_adjustment_quality: 0.1
+      lineage_completeness: 0.15
+  synthetic_fixture_baseline:
+    description: Deterministic test strategy for synthetic fixtures only. Not valid for customer-facing claims.
+    inputs:
+      - fixture_validity
+      - schema_validity
+      - privacy_gate_passed
+      - lineage_completeness
+    default_weights:
+      fixture_validity: 0.25
+      schema_validity: 0.25
+      privacy_gate_passed: 0.25
+      lineage_completeness: 0.25
