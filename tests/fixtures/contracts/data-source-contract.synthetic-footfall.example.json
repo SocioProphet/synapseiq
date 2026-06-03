@@ -1,0 +1,56 @@
+{
+  "source_id": "synthetic_footfall_v1",
+  "provider": "SynapseIQ Synthetic Fixtures",
+  "source_class": "synthetic_fixture",
+  "content_lane": "place_footfall",
+  "raw_data_class": "aggregated_visit_panel_fixture",
+  "delivery": {
+    "modes": ["fixture"],
+    "supported_formats": ["json"]
+  },
+  "refresh": {
+    "cadence": "on_demand"
+  },
+  "geography": {
+    "supported_grains": ["poi", "h3"]
+  },
+  "time": {
+    "supported_grains": ["day", "week"]
+  },
+  "privacy": {
+    "raw_identifiers_allowed": false,
+    "aggregation_floor_required": true,
+    "minimum_aggregation": {
+      "min_subjects": 50,
+      "min_time_window": "P7D",
+      "min_geo_grain": "poi"
+    },
+    "protected_location_exclusion_required": true,
+    "consent_provenance_required": false
+  },
+  "license": {
+    "raw_resale_allowed": false,
+    "derived_enrichment_allowed": true,
+    "customer_data_join_allowed": "allowed_with_review",
+    "api_exposure_allowed": "allowed",
+    "ai_training_allowed": "blocked",
+    "retention_after_termination": "not_applicable_synthetic"
+  },
+  "governance": {
+    "contract_review_required": true,
+    "privacy_review_required": true,
+    "package_approval_required": true,
+    "ucm_activity_required": true,
+    "review_state": "approved_for_synthetic_only",
+    "activity_id": "SIQ-MOB-002"
+  },
+  "packages": {
+    "allowed": ["retail_trade_area.v1", "cre_location_underwriting.v1"],
+    "blocked": ["individual_targeting", "protected_location_audience_building"]
+  },
+  "lineage": {
+    "required": true,
+    "source_sample_required": true,
+    "audit_bundle_required": true
+  }
+}
