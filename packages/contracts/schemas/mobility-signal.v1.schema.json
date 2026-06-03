@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://socioprophet.ai/synapseiq/schemas/mobility-signal.v1.schema.json",
+  "title": "MobilitySignal",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "signal_id",
+    "signal_class",
+    "domain",
+    "anchor",
+    "time",
+    "geo",
+    "measures",
+    "provenance",
+    "privacy",
+    "license",
+    "confidence"
+  ],
+  "properties": {
+    "signal_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_.-]*$" },
+    "signal_class": { "type": "string", "enum": ["observed_content", "reference_substrate", "derived_enrichment"] },
+    "domain": { "type": "string", "const": "mobility" },
+    "anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": { "type": "string", "enum": ["poi", "brand", "road_segment", "corridor", "h3_cell", "trade_area", "census_geo", "event", "site"] },
+        "id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "time": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["grain", "start", "end"],
+      "properties": {
+        "grain": { "type": "string", "enum": ["hour", "day", "week", "month", "season", "custom"] },
+        "start": { "type": "string" },
+        "end": { "type": "string" }
+      }
+    },
+    "geo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["grain"],
+      "properties": {
+        "grain": { "type": "string", "enum": ["poi", "road_segment", "corridor", "h3", "census_block_group", "tract", "county", "trade_area", "site"] },
+        "h3_resolution": { "type": ["integer", "null"], "minimum": 0, "maximum": 15 }
+      }
+    },
+    "measures": { "type": "object", "minProperties": 1 },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "source_contract_id", "ingestion_activity_id", "baseline_id"],
+      "properties": {
+        "provider": { "type": "string", "minLength": 1 },
+        "source_contract_id": { "type": "string", "minLength": 1 },
+        "ingestion_activity_id": { "type": "string", "minLength": 1 },
+        "baseline_id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["aggregation_floor_met", "protected_location_excluded", "raw_identifiers_present"],
+      "properties": {
+        "aggregation_floor_met": { "type": "boolean" },
+        "protected_location_excluded": { "type": "boolean" },
+        "raw_identifiers_present": { "type": "boolean", "const": false },
+        "suppression_reason": { "type": ["string", "null"] }
+      }
+    },
+    "license": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["raw_resale_allowed", "derived_enrichment_allowed", "allowed_packages"],
+      "properties": {
+        "raw_resale_allowed": { "type": "boolean" },
+        "derived_enrichment_allowed": { "type": "boolean" },
+        "allowed_packages": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "confidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["score", "method"],
+      "properties": {
+        "score": { "type": "number", "minimum": 0, "maximum": 1 },
+        "method": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}
