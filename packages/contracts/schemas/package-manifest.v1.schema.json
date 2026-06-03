@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://socioprophet.ai/synapseiq/schemas/package-manifest.v1.schema.json",
+  "title": "PackageManifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "package_id",
+    "version",
+    "title",
+    "purpose",
+    "inputs",
+    "outputs",
+    "privacy",
+    "confidence",
+    "lineage"
+  ],
+  "properties": {
+    "package_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_.-]*$" },
+    "version": { "type": "string", "pattern": "^v[0-9]+$" },
+    "title": { "type": "string", "minLength": 1 },
+    "purpose": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["primary", "allowed", "blocked"],
+      "properties": {
+        "primary": { "type": "string", "minLength": 1 },
+        "allowed": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "blocked": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "optional"],
+      "properties": {
+        "required": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "optional": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "outputs": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min_subjects", "min_time_window", "suppress_protected_locations", "raw_identifiers_allowed"],
+      "properties": {
+        "min_subjects": { "type": "integer", "minimum": 1 },
+        "min_time_window": { "type": "string", "minLength": 1 },
+        "suppress_protected_locations": { "type": "boolean" },
+        "raw_identifiers_allowed": { "type": "boolean", "const": false }
+      }
+    },
+    "confidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategy"],
+      "properties": {
+        "strategy": { "type": "string", "minLength": 1 }
+      }
+    },
+    "lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required"],
+      "properties": {
+        "required": { "type": "boolean" },
+        "evidence_bundle_required": { "type": "boolean" }
+      }
+    }
+  }
+}
