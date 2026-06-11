@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://socioprophet.ai/synapseiq/schemas/data-source-contract.v1.schema.json",
+  "title": "DataSourceContract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "source_id",
+    "provider",
+    "source_class",
+    "content_lane",
+    "delivery",
+    "geography",
+    "time",
+    "privacy",
+    "license",
+    "governance",
+    "packages",
+    "lineage"
+  ],
+  "properties": {
+    "source_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_.-]*$" },
+    "provider": { "type": "string", "minLength": 1 },
+    "source_class": {
+      "type": "string",
+      "enum": [
+        "commercial_mobility",
+        "public_mobility",
+        "open_reference",
+        "public_reference",
+        "transaction_aggregate",
+        "event_disruption",
+        "weather_environment",
+        "freight_supply_chain",
+        "customer_first_party",
+        "synthetic_fixture"
+      ]
+    },
+    "content_lane": {
+      "type": "string",
+      "enum": [
+        "place_footfall",
+        "road_vehicle_corridor",
+        "spend_transaction",
+        "intent_attention",
+        "event_weather_disruption",
+        "freight_supply_chain",
+        "reference_substrate"
+      ]
+    },
+    "raw_data_class": { "type": "string", "minLength": 1 },
+    "delivery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["modes", "supported_formats"],
+      "properties": {
+        "modes": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "supported_formats": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+      }
+    },
+    "refresh": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cadence": { "type": "string" }
+      }
+    },
+    "geography": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["supported_grains"],
+      "properties": {
+        "supported_grains": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+      }
+    },
+    "time": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["supported_grains"],
+      "properties": {
+        "supported_grains": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_identifiers_allowed",
+        "aggregation_floor_required",
+        "minimum_aggregation",
+        "protected_location_exclusion_required",
+        "consent_provenance_required"
+      ],
+      "properties": {
+        "raw_identifiers_allowed": { "type": "boolean", "const": false },
+        "aggregation_floor_required": { "type": "boolean" },
+        "minimum_aggregation": { "type": "object" },
+        "protected_location_exclusion_required": { "type": "boolean" },
+        "consent_provenance_required": { "type": "boolean" }
+      }
+    },
+    "license": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "raw_resale_allowed",
+        "derived_enrichment_allowed",
+        "customer_data_join_allowed",
+        "api_exposure_allowed",
+        "ai_training_allowed"
+      ],
+      "properties": {
+        "raw_resale_allowed": { "type": "boolean" },
+        "derived_enrichment_allowed": { "type": "boolean" },
+        "customer_data_join_allowed": { "type": "string", "enum": ["allowed", "allowed_with_review", "blocked", "unknown"] },
+        "api_exposure_allowed": { "type": "string", "enum": ["allowed", "allowed_with_review", "blocked", "unknown"] },
+        "ai_training_allowed": { "type": "string", "enum": ["allowed", "allowed_with_review", "blocked", "unknown"] },
+        "retention_after_termination": { "type": "string" }
+      }
+    },
+    "governance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_review_required",
+        "privacy_review_required",
+        "package_approval_required",
+        "ucm_activity_required",
+        "review_state"
+      ],
+      "properties": {
+        "contract_review_required": { "type": "boolean" },
+        "privacy_review_required": { "type": "boolean" },
+        "package_approval_required": { "type": "boolean" },
+        "ucm_activity_required": { "type": "boolean" },
+        "review_state": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "legal_review",
+            "privacy_review",
+            "technical_review",
+            "package_review",
+            "approved_for_synthetic_only",
+            "approved_for_internal_use",
+            "approved_for_package_outputs",
+            "rejected",
+            "suspended"
+          ]
+        },
+        "activity_id": { "type": "string" }
+      }
+    },
+    "packages": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowed", "blocked"],
+      "properties": {
+        "allowed": { "type": "array", "items": { "type": "string" } },
+        "blocked": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required"],
+      "properties": {
+        "required": { "type": "boolean" },
+        "source_sample_required": { "type": "boolean" },
+        "audit_bundle_required": { "type": "boolean" }
+      }
+    }
+  }
+}

@@ -1,0 +1,37 @@
+version: v1
+status: draft
+owner: synapseiq
+purposes:
+  site_selection:
+    description: Evaluate candidate locations using aggregated movement, context, and commercial demand signals.
+    allowed_for_packages:
+      - retail_trade_area.v1
+      - cre_location_underwriting.v1
+      - ev_logistics_corridor.v1
+  market_planning:
+    description: Compare geographies, corridors, stores, venues, and trade areas for aggregate planning.
+    allowed_for_packages:
+      - retail_trade_area.v1
+      - cre_location_underwriting.v1
+  portfolio_benchmarking:
+    description: Compare existing locations, corridors, or assets without individual-level profiling.
+    allowed_for_packages:
+      - retail_trade_area.v1
+      - cre_location_underwriting.v1
+  infrastructure_siting:
+    description: Rank candidate infrastructure sites using corridor demand and aggregate dwell/traffic context.
+    allowed_for_packages:
+      - ev_logistics_corridor.v1
+      - corridor_traffic_exposure.v1
+  aggregate_measurement:
+    description: Measure aggregate lift or change at cohort, geography, venue, or corridor level.
+    allowed_for_packages:
+      - retail_trade_area.v1
+      - event_impact.v1
+blocked_purposes:
+  individual_targeting:
+    reason: SynapseIQ mobility packages are aggregate products only.
+  restricted_audience_building:
+    reason: The product lane must not construct audiences from protected or high-risk places.
+  unapproved_investigative_use:
+    reason: Requires separate legal, contractual, and governance lane.

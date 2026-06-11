@@ -1,0 +1,56 @@
+{
+  "package_id": "retail_trade_area",
+  "version": "v1",
+  "title": "Retail Trade Area Intelligence",
+  "purpose": {
+    "primary": "retail_site_selection",
+    "allowed": [
+      "site_selection",
+      "market_planning",
+      "portfolio_benchmarking",
+      "aggregate_measurement"
+    ],
+    "blocked": [
+      "individual_targeting",
+      "restricted_audience_building",
+      "unapproved_investigative_use"
+    ]
+  },
+  "inputs": {
+    "required": [
+      "mobility.footfall.poi.weekly.synthetic.v1",
+      "poi.identity.v1",
+      "census.demographic_context.v1"
+    ],
+    "optional": [
+      "events.local_demand.v1",
+      "spend.aggregate.merchant_category.weekly.v1"
+    ]
+  },
+  "outputs": [
+    "trade_area_polygon",
+    "visit_trend",
+    "visitor_mix",
+    "daypart_profile",
+    "repeat_visit_score",
+    "competitive_overlap",
+    "leakage_score",
+    "cannibalization_risk",
+    "event_adjusted_demand",
+    "site_fit_score",
+    "confidence_band"
+  ],
+  "privacy": {
+    "min_subjects": 50,
+    "min_time_window": "P7D",
+    "suppress_protected_locations": true,
+    "raw_identifiers_allowed": false
+  },
+  "confidence": {
+    "strategy": "weighted_provider_public_baseline"
+  },
+  "lineage": {
+    "required": true,
+    "evidence_bundle_required": true
+  }
+}

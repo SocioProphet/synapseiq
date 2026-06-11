@@ -1,0 +1,33 @@
+version: v1
+status: draft
+owner: synapseiq
+purpose: >-
+  Define location classes that require exclusion or elevated review for mobility-derived packages.
+  This taxonomy supports aggregate safety gates. It is not an audience-building taxonomy.
+default_policy:
+  suppress_from_standard_packages: true
+  require_review_for_exception: true
+classes:
+  medical_care:
+    description: Hospitals, clinics, specialized care centers, and comparable care locations.
+  worship:
+    description: Places of worship and religious community locations.
+  civic_expression:
+    description: Protest, political gathering, civic organizing, or labor organizing locations.
+  shelter_and_safety:
+    description: Shelters, domestic-safety facilities, crisis support locations, and comparable protected facilities.
+  military_and_critical_security:
+    description: Military installations and high-security critical sites.
+  addiction_treatment:
+    description: Substance treatment and recovery facilities.
+  immigration_support:
+    description: Immigration support and legal-aid locations where exposure could create safety risk.
+  child_sensitive:
+    description: Schools, childcare, and child-centered facilities requiring elevated care.
+controls:
+  standard_mobility_package:
+    action: suppress
+  aggregate_public_sector_package:
+    action: require_review
+  synthetic_fixture:
+    action: allow_if_no_real_person_or_real_place_trace

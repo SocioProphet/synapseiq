@@ -1,0 +1,51 @@
+{
+  "signal_id": "mobility.footfall.poi.weekly.synthetic.v1",
+  "signal_class": "observed_content",
+  "domain": "mobility",
+  "anchor": {
+    "type": "poi",
+    "id": "poi_demo_001"
+  },
+  "time": {
+    "grain": "week",
+    "start": "2026-05-25",
+    "end": "2026-06-01"
+  },
+  "geo": {
+    "grain": "poi",
+    "h3_resolution": null
+  },
+  "measures": {
+    "estimated_visits": 12450,
+    "unique_visitors_band": "1000-5000",
+    "dwell_p50_minutes": 18,
+    "dwell_p90_minutes": 47,
+    "repeat_visit_rate": 0.22,
+    "visitor_origin_mix": {
+      "local": 0.61,
+      "commuter": 0.27,
+      "visitor": 0.12
+    }
+  },
+  "provenance": {
+    "provider": "SynapseIQ Synthetic Fixtures",
+    "source_contract_id": "synthetic_footfall_v1",
+    "ingestion_activity_id": "SIQ-MOB-003",
+    "baseline_id": "mobility-baseline-synthetic-2026-06"
+  },
+  "privacy": {
+    "aggregation_floor_met": true,
+    "protected_location_excluded": true,
+    "raw_identifiers_present": false,
+    "suppression_reason": null
+  },
+  "license": {
+    "raw_resale_allowed": false,
+    "derived_enrichment_allowed": true,
+    "allowed_packages": ["retail_trade_area.v1", "cre_location_underwriting.v1"]
+  },
+  "confidence": {
+    "score": 0.82,
+    "method": "synthetic_provider_plus_public_baseline_fixture"
+  }
+}

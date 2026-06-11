@@ -1,0 +1,81 @@
+version: v1
+status: draft
+owner: synapseiq
+lanes:
+  place_footfall:
+    description: Aggregated venue, place, and pedestrian visitation content.
+    example_signals:
+      - visits
+      - dwell_time
+      - repeat_rate
+      - visitor_origin_mix
+      - cross_shopping
+      - trade_area_draw
+    package_targets:
+      - retail_trade_area.v1
+      - cre_location_underwriting.v1
+      - aggregate_measurement.v1
+  road_vehicle_corridor:
+    description: Aggregated road, corridor, vehicle, truck, and pass-by movement content.
+    example_signals:
+      - traffic_volume
+      - speed
+      - congestion
+      - truck_activity
+      - origin_destination_flow
+      - dwell_or_idling_zone
+    package_targets:
+      - corridor_traffic_exposure.v1
+      - ev_logistics_corridor.v1
+  spend_transaction:
+    description: Aggregated commercial value, transaction, basket, and merchant/category content.
+    example_signals:
+      - spend_band
+      - category_share
+      - repeat_purchase
+      - merchant_lift
+    package_targets:
+      - retail_trade_area.v1
+      - cre_location_underwriting.v1
+      - aggregate_measurement.v1
+  intent_attention:
+    description: Aggregated search, review, web, app, local discovery, and demand-intent content.
+    example_signals:
+      - search_demand
+      - review_velocity
+      - app_interest
+      - brand_interest
+    package_targets:
+      - retail_trade_area.v1
+      - event_impact.v1
+  event_weather_disruption:
+    description: Events, weather, closures, construction, civic incidents, and context that explains movement variation.
+    example_signals:
+      - event_attendance_pressure
+      - weather_adjustment
+      - closure_impact
+      - construction_disruption
+    package_targets:
+      - event_impact.v1
+      - corridor_traffic_exposure.v1
+  freight_supply_chain:
+    description: Aggregated freight, port, warehouse, delivery, and asset-flow content.
+    example_signals:
+      - truck_pressure
+      - warehouse_dwell
+      - port_flow
+      - intermodal_pressure
+    package_targets:
+      - ev_logistics_corridor.v1
+      - corridor_traffic_exposure.v1
+  reference_substrate:
+    description: Join fabric, not the sellable enrichment itself.
+    example_signals:
+      - poi_identity
+      - road_graph
+      - boundary
+      - h3_cell
+      - census_geo
+      - gtfs_stop
+    package_targets:
+      - all

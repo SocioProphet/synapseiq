@@ -1,0 +1,56 @@
+{
+  "package_id": "ev_logistics_corridor",
+  "version": "v1",
+  "title": "EV and Logistics Corridor Intelligence",
+  "purpose": {
+    "primary": "infrastructure_siting",
+    "allowed": [
+      "charger_siting",
+      "fuel_network_planning",
+      "fleet_planning",
+      "corridor_planning",
+      "logistics_site_selection"
+    ],
+    "blocked": [
+      "individual_targeting",
+      "restricted_audience_building",
+      "unapproved_investigative_use"
+    ]
+  },
+  "inputs": {
+    "required": [
+      "mobility.vehicle.corridor.weekly.synthetic.v1",
+      "road.network.segment.v1",
+      "poi.identity.v1"
+    ],
+    "optional": [
+      "events.local_disruption.v1",
+      "freight.node_context.v1",
+      "grid.site_context.v1"
+    ]
+  },
+  "outputs": [
+    "charger_demand_score",
+    "fuel_demand_score",
+    "fleet_suitability",
+    "truck_dwell_opportunity",
+    "underserved_corridor_score",
+    "commuter_visitor_split",
+    "local_longhaul_split",
+    "site_rank",
+    "confidence_band"
+  ],
+  "privacy": {
+    "min_subjects": 50,
+    "min_time_window": "P7D",
+    "suppress_protected_locations": true,
+    "raw_identifiers_allowed": false
+  },
+  "confidence": {
+    "strategy": "weighted_corridor_public_baseline"
+  },
+  "lineage": {
+    "required": true,
+    "evidence_bundle_required": true
+  }
+}
