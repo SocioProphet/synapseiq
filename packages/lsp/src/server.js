@@ -37,7 +37,7 @@ function _getOrCreateLS(text, filename) {
 }
 
 const PORT = parseInt(process.env.SYNAPSEIQ_LSP_PORT || '2087', 10);
-const VERSION = '0.7.0';
+const VERSION = '0.8.0';
 
 const SUPPORTED_LANGUAGES = [
   'python', 'typescript', 'javascript', 'lua', 'rust', 'go',
@@ -773,6 +773,120 @@ function getInlayHints(text, filename) {
   } catch (_) { return []; }
 }
 
+function getCodeActions(text, filename, range, diagnostics) {
+  const actions = [];
+
+  // Quick fix: unused variable
+  for (const diag of (diagnostics || [])) {
+    const msg = (diag.message || '').toLowerCase();
+    const lineText = text.split('\n')[diag.range?.start?.line || 0] || '';
+
+    if (msg.includes('is declared but') || msg.includes('is never read')) {
+      const varMatch = diag.message.match(/'([^']+)'/);
+      if (varMatch) {
+        actions.push({
+          title: `Remove unused variable '${varMatch[1]}'`,
+          kind: 'quickfix',
+          diagnostics: [diag],
+          edit: { changes: { [filename]: [{ range: diag.range, newText: '' }] } },
+        });
+      }
+    }
+    if (msg.includes('cannot find name') || msg.includes('is not defined')) {
+      const nameMatch = diag.message.match(/'([^']+)'/);
+      if (nameMatch) {
+        actions.push({
+          title: `Add import for '${nameMatch[1]}'`,
+          kind: 'quickfix',
+          diagnostics: [diag],
+          command: { title: 'Add import', command: 'turtle.addImport', arguments: [filename, nameMatch[1]] },
+        });
+      }
+    }
+    if (msg.includes('missing semicolon') || msg.includes("';'")) {
+      actions.push({
+        title: 'Add missing semicolon',
+        kind: 'quickfix',
+        diagnostics: [diag],
+        edit: { changes: { [filename]: [{ range: { start: diag.range?.end, end: diag.range?.end }, newText: ';' }] } },
+      });
+    }
+  }
+
+  // Refactor actions
+  const lineStart = range?.start?.line || 0;
+  const lineEnd = range?.end?.line || lineStart;
+  const selectedLines = text.split('\n').slice(lineStart, lineEnd + 1);
+  const selectedText = selectedLines.join('\n').trim();
+
+  if (selectedText.length > 10) {
+    actions.push({
+      title: 'Extract to function',
+      kind: 'refactor.extract',
+      command: { title: 'Extract', command: 'turtle.extractFunction', arguments: [filename, range, selectedText] },
+    });
+    actions.push({
+      title: 'Extract to variable',
+      kind: 'refactor.extract',
+      command: { title: 'Extract', command: 'turtle.extractVariable', arguments: [filename, range, selectedText] },
+    });
+  }
+
+  // Source actions
+  actions.push({
+    title: 'Organize imports',
+    kind: 'source.organizeImports',
+    command: { title: 'Organize', command: 'turtle.organizeImports', arguments: [filename] },
+  });
+
+  return actions;
+}
+
+function getWorkspaceSymbols(query, projectRoot) {
+  const symbols = [];
+  const { readdirSync, statSync, readFileSync } = require('fs');
+  const path = require('node:path');
+  const MAX_FILES = 40;
+  let fileCount = 0;
+
+  function walk(dir, depth) {
+    if (depth > 4 || fileCount >= MAX_FILES) return;
+    let entries;
+    try { entries = readdirSync(dir); } catch { return; }
+    for (const name of entries) {
+      if (name.startsWith('.') || name === 'node_modules' || name === 'dist' || name === 'build') continue;
+      const full = path.join(dir, name);
+      let stat;
+      try { stat = statSync(full); } catch { continue; }
+      if (stat.isDirectory()) {
+        walk(full, depth + 1);
+      } else if (/\.(ts|tsx|js|jsx|py|go|rs)$/.test(name) && fileCount < MAX_FILES) {
+        fileCount++;
+        let src;
+        try { src = readFileSync(full, 'utf8'); } catch { continue; }
+        const lines = src.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          const m = line.match(/^(?:export\s+)?(?:async\s+)?(?:function|class|const|let|var|def|pub fn|fn)\s+([A-Za-z_$][A-Za-z0-9_$]*)/);
+          if (m) {
+            const symName = m[1];
+            if (!query || symName.toLowerCase().includes(query.toLowerCase())) {
+              symbols.push({
+                name: symName,
+                kind: line.includes('class') ? 5 : line.includes('function') || line.includes('def') || line.includes(' fn ') ? 12 : 13,
+                location: { uri: `file://${full}`, range: { start: { line: i, character: 0 }, end: { line: i, character: line.length } } },
+              });
+            }
+          }
+          if (symbols.length >= 50) return;
+        }
+      }
+    }
+  }
+  walk(projectRoot || process.cwd(), 0);
+  return symbols;
+}
+
 // ---------------------------------------------------------------------------
 // HTTP server
 // ---------------------------------------------------------------------------
@@ -935,6 +1049,41 @@ const server = http.createServer(async (req, res) => {
     });
   }
 
+  if (req.url === '/lsp/code-actions' && req.method === 'POST') {
+    const { text: caText, filename: caFile, range: caRange, diagnostics: caDiags } = body;
+    return send(res, 200, { code_actions: getCodeActions(caText || text, caFile || file, caRange, caDiags) });
+  }
+
+  if (req.url === '/lsp/workspace-symbols' && req.method === 'POST') {
+    const { query: wsQuery, cwd: wsCwd } = body;
+    return send(res, 200, { symbols: getWorkspaceSymbols(wsQuery, wsCwd) });
+  }
+
+  if (req.url === '/lsp/workspace-diagnostics' && req.method === 'POST') {
+    const { files: wdFiles, cwd: wdCwd } = body;
+    const results = {};
+    const filesToCheck = wdFiles && wdFiles.length > 0 ? [...wdFiles] : [];
+    if (filesToCheck.length === 0 && wdCwd) {
+      const { spawnSync: sp } = require('child_process');
+      const r = sp('git', ['diff', '--name-only', 'HEAD'], { cwd: wdCwd, encoding: 'utf8' });
+      if (r.status === 0) {
+        r.stdout.split('\n').filter(f => /\.(ts|tsx|js|jsx|py)$/.test(f)).forEach(f => {
+          filesToCheck.push(require('node:path').join(wdCwd, f));
+        });
+      }
+    }
+    for (const fname of filesToCheck.slice(0, 20)) {
+      try {
+        const { readFileSync } = require('fs');
+        const src = readFileSync(fname, 'utf8');
+        const lang = detectLanguage(fname);
+        const diags = extractDiagnostics(src, lang, fname);
+        if (diags.length > 0) results[fname] = diags;
+      } catch { /* skip unreadable */ }
+    }
+    return send(res, 200, { diagnostics: results, files_checked: filesToCheck.length });
+  }
+
   return send(res, 404, { error: 'unknown endpoint', url: req.url });
 });
 
@@ -1032,6 +1181,11 @@ function runLspServer() {
           signatureHelpProvider: { triggerCharacters: ['(', ',', '<'] },
           documentFormattingProvider: true,
           inlayHintProvider: { resolveProvider: false },
+          codeActionProvider: { resolveProvider: false },
+          workspaceSymbolProvider: true,
+          documentSymbolProvider: true,
+          renameProvider: { prepareProvider: true },
+          selectionRangeProvider: true,
         },
         serverInfo: { name: 'synapseiq-lsp', version: VERSION },
       });
@@ -1170,6 +1324,97 @@ function runLspServer() {
         insertText: s.name,
       }));
       respond(id, { isIncomplete: false, items });
+    } else if (method === 'textDocument/codeAction') {
+      const { textDocument: caDoc, range: caRange, context: caCtx } = params;
+      const caUri = caDoc?.uri || '';
+      const caFile = caUri.replace('file://', '');
+      const caEntry = cache.get(caUri);
+      const caText = caEntry ? caEntry.text : '';
+      const actions = getCodeActions(caText, caFile, caRange, caCtx?.diagnostics || []);
+      respond(id, actions);
+
+    } else if (method === 'workspace/symbol') {
+      const { query: wsQ } = params;
+      respond(id, getWorkspaceSymbols(wsQ, process.cwd()));
+
+    } else if (method === 'textDocument/documentSymbol') {
+      const dsUri = params.textDocument?.uri || '';
+      const dsEntry = cache.get(dsUri);
+      const dsText = dsEntry ? dsEntry.text : '';
+      const dsSymbols = [];
+      const dsLines = dsText.split('\n');
+      for (let i = 0; i < dsLines.length; i++) {
+        const dsLine = dsLines[i];
+        const dsM = dsLine.match(/^(?:export\s+)?(?:async\s+)?(?:function|class|const|let|var|def|pub fn|fn|type|interface|enum)\s+([A-Za-z_$][A-Za-z0-9_$<>]*)/);
+        if (dsM) {
+          const dsKind = dsLine.includes('class') || dsLine.includes('interface') || dsLine.includes('enum') ? 5 :
+                         dsLine.includes('function') || dsLine.includes('def') || dsLine.includes(' fn ') ? 12 : 13;
+          dsSymbols.push({ name: dsM[1], kind: dsKind, range: { start: { line: i, character: 0 }, end: { line: i, character: dsLine.length } }, selectionRange: { start: { line: i, character: 0 }, end: { line: i, character: dsLine.length } } });
+        }
+      }
+      respond(id, dsSymbols);
+
+    } else if (method === 'textDocument/rename') {
+      const { textDocument: rnDoc, position: rnPos, newName: rnNew } = params;
+      const rnUri = rnDoc?.uri || '';
+      const rnEntry = cache.get(rnUri);
+      if (!rnEntry || id === undefined) { if (id !== undefined) respond(id, null); }
+      else {
+        const rnLines = rnEntry.text.split('\n');
+        const rnLineText = rnLines[rnPos.line] || '';
+        const rnBefore = rnLineText.slice(0, rnPos.character);
+        const rnAfter  = rnLineText.slice(rnPos.character);
+        const rnWb = rnBefore.match(/[A-Za-z_$][A-Za-z0-9_$]*$/) || [''];
+        const rnWa = rnAfter.match(/^[A-Za-z0-9_$]*/) || [''];
+        const rnOld = rnWb[0] + rnWa[0];
+        if (!rnOld) { respond(id, null); }
+        else {
+          const rnEdits = [];
+          const rnRe = new RegExp(`\\b${rnOld.replace(/[$]/g, '\\$')}\\b`, 'g');
+          for (let i = 0; i < rnLines.length; i++) {
+            let rnM;
+            while ((rnM = rnRe.exec(rnLines[i])) !== null) {
+              rnEdits.push({ range: { start: { line: i, character: rnM.index }, end: { line: i, character: rnM.index + rnOld.length } }, newText: rnNew });
+            }
+          }
+          respond(id, { changes: { [rnUri]: rnEdits } });
+        }
+      }
+
+    } else if (method === 'textDocument/prepareRename') {
+      const { textDocument: prDoc, position: prPos } = params;
+      const prUri = prDoc?.uri || '';
+      const prEntry = cache.get(prUri);
+      if (!prEntry || id === undefined) { if (id !== undefined) respond(id, null); }
+      else {
+        const prLineText = (prEntry.text.split('\n')[prPos.line] || '');
+        const prBefore = prLineText.slice(0, prPos.character);
+        const prAfter  = prLineText.slice(prPos.character);
+        const prWb = prBefore.match(/[A-Za-z_$][A-Za-z0-9_$]*$/) || [''];
+        const prWa = prAfter.match(/^[A-Za-z0-9_$]*/) || [''];
+        const prStart = prPos.character - prWb[0].length;
+        const prEnd   = prPos.character + prWa[0].length;
+        respond(id, { range: { start: { line: prPos.line, character: prStart }, end: { line: prPos.line, character: prEnd } }, placeholder: prWb[0] + prWa[0] });
+      }
+
+    } else if (method === 'textDocument/selectionRange') {
+      const { textDocument: srDoc, positions: srPositions } = params;
+      const srUri = srDoc?.uri || '';
+      const srEntry = cache.get(srUri);
+      const srLines = srEntry ? srEntry.text.split('\n') : [];
+      const srResult = (srPositions || []).map(srPos => {
+        const srLineText = srLines[srPos.line] || '';
+        const srWb = (srLineText.slice(0, srPos.character).match(/[A-Za-z0-9_$]+$/) || [''])[0];
+        const srWa = (srLineText.slice(srPos.character).match(/^[A-Za-z0-9_$]*/) || [''])[0];
+        const srWordStart = srPos.character - srWb.length;
+        const srWordEnd   = srPos.character + srWa.length;
+        return {
+          range: { start: { line: srPos.line, character: srWordStart }, end: { line: srPos.line, character: srWordEnd } },
+          parent: { range: { start: { line: srPos.line, character: 0 }, end: { line: srPos.line, character: srLineText.length } } },
+        };
+      });
+      respond(id, srResult);
+
     } else if (method === 'shutdown') {
       if (id !== undefined) respond(id, null);
     } else if (method === 'exit') {
