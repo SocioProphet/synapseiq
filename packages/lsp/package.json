@@ -1,0 +1,12 @@
+{
+  "name": "@socioprophet/synapseiq-lsp",
+  "version": "0.1.0",
+  "description": "SynapseIQ language server — diagnostics, symbols, hover, completions",
+  "private": true,
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "engines": { "node": ">=20" }
+}
