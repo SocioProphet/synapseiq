@@ -37,7 +37,7 @@ function _getOrCreateLS(text, filename) {
 }
 
 const PORT = parseInt(process.env.SYNAPSEIQ_LSP_PORT || '2087', 10);
-const VERSION = '0.8.0';
+const VERSION = '0.8.1';
 
 const SUPPORTED_LANGUAGES = [
   'python', 'typescript', 'javascript', 'lua', 'rust', 'go',
@@ -1105,6 +1105,81 @@ const server = http.createServer(async (req, res) => {
     });
     const uri = renFile ? `file://${renFile}` : 'file:///unknown';
     return send(res, 200, { changes: { [uri]: edits }, old_name: oldName, edit_count: edits.length });
+  }
+
+  if (req.url === '/lsp/rename-across-project' && req.method === 'POST') {
+    const { old_name, new_name, project_root, file_patterns } = body;
+
+    if (!old_name || !new_name) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'old_name and new_name required' }));
+      return;
+    }
+
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const root = path.resolve(project_root || process.cwd());
+    const patterns = file_patterns || ['**/*.ts', '**/*.tsx', '**/*.js', '**/*.jsx', '**/*.py', '**/*.go', '**/*.rs'];
+
+    const changes = {};
+    let total_edits = 0;
+    let files_changed = 0;
+
+    // Walk files matching patterns
+    function walkDir(dir, depth = 0) {
+      if (depth > 6) return;
+      let entries;
+      try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+      for (const entry of entries) {
+        if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === '__pycache__') continue;
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          walkDir(full, depth + 1);
+        } else if (entry.isFile()) {
+          const ext = path.extname(entry.name);
+          const allowed_exts = ['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs', '.java', '.c', '.cpp', '.h'];
+          if (!allowed_exts.includes(ext)) continue;
+          let content;
+          try { content = fs.readFileSync(full, 'utf8'); } catch { continue; }
+          // Whole-word replace
+          const regex = new RegExp(`\\b${old_name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g');
+          const matches = [...content.matchAll(regex)];
+          if (matches.length === 0) continue;
+          const new_content = content.replace(regex, new_name);
+          const uri = `file://${full}`;
+          // Build LSP-style text edits
+          const lines = content.split('\n');
+          const edits = [];
+          for (const match of matches) {
+            let char_pos = match.index;
+            let line = 0, char = 0;
+            for (let i = 0; i < lines.length; i++) {
+              if (char_pos <= lines[i].length) { line = i; char = char_pos; break; }
+              char_pos -= lines[i].length + 1;
+            }
+            edits.push({ range: { start: { line, character: char }, end: { line, character: char + old_name.length } }, newText: new_name });
+          }
+          changes[uri] = edits;
+          total_edits += matches.length;
+          files_changed++;
+          // Actually write the file
+          try { fs.writeFileSync(full, new_content, 'utf8'); } catch { /* skip read-only */ }
+        }
+      }
+    }
+
+    walkDir(root);
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      changes,
+      old_name,
+      new_name,
+      total_edits,
+      files_changed,
+      project_root: root,
+    }));
+    return;
   }
 
   if (req.url === '/lsp/document-symbols' && req.method === 'POST') {
