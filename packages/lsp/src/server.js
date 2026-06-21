@@ -1084,6 +1084,43 @@ const server = http.createServer(async (req, res) => {
     return send(res, 200, { diagnostics: results, files_checked: filesToCheck.length });
   }
 
+  if (req.url === '/lsp/rename' && req.method === 'POST') {
+    const { text: renText, filename: renFile, line: renLine, character: renChar, new_name: renNewName } = body;
+    if (!renText || !renNewName) return send(res, 200, { changes: {} });
+    const renLines = renText.split('\n');
+    const lineText = renLines[renLine || 0] || '';
+    const before = lineText.slice(0, renChar || 0);
+    const after  = lineText.slice(renChar || 0);
+    const wb = (before.match(/[A-Za-z_$][A-Za-z0-9_$]*$/) || [''])[0];
+    const wa = (after.match(/^[A-Za-z0-9_$]*/) || [''])[0];
+    const oldName = wb + wa;
+    if (!oldName) return send(res, 200, { changes: {} });
+    const edits = [];
+    const re = new RegExp(`\\b${oldName.replace(/[$]/g, '\\$')}\\b`, 'g');
+    renLines.forEach((ln, i) => {
+      let m;
+      while ((m = re.exec(ln)) !== null) {
+        edits.push({ range: { start: { line: i, character: m.index }, end: { line: i, character: m.index + oldName.length } }, newText: renNewName });
+      }
+    });
+    const uri = renFile ? `file://${renFile}` : 'file:///unknown';
+    return send(res, 200, { changes: { [uri]: edits }, old_name: oldName, edit_count: edits.length });
+  }
+
+  if (req.url === '/lsp/document-symbols' && req.method === 'POST') {
+    const { text: dsText, filename: dsFile } = body;
+    const src = dsText || '';
+    const symbols = [];
+    src.split('\n').forEach((line, i) => {
+      const m = line.match(/^(?:export\s+)?(?:async\s+)?(?:function|class|const|let|var|def|pub fn|fn|type|interface|enum)\s+([A-Za-z_$][A-Za-z0-9_$<>]*)/);
+      if (m) {
+        const k = line.includes('class')||line.includes('interface')||line.includes('enum') ? 5 : line.includes('function')||line.includes('def')||line.includes(' fn ') ? 12 : 13;
+        symbols.push({ name: m[1], kind: k, range: { start:{line:i,character:0}, end:{line:i,character:line.length} }, selectionRange: { start:{line:i,character:0}, end:{line:i,character:line.length} } });
+      }
+    });
+    return send(res, 200, { symbols });
+  }
+
   return send(res, 404, { error: 'unknown endpoint', url: req.url });
 });
 
