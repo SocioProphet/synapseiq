@@ -14,8 +14,30 @@ let babelParser = null;
 try { ts = require('typescript'); } catch (_) {}
 try { babelParser = require('@babel/parser'); } catch (_) {}
 
+// LRU cache for TS language service instances (~15ms → ~1ms after first call)
+const _tsLsCache = new Map();
+const _LS_CACHE_MAX = 20;
+
+function _evictOldestLS() {
+  const key = _tsLsCache.keys().next().value;
+  const entry = _tsLsCache.get(key);
+  try { if (entry && entry.ls) entry.ls.dispose(); } catch (_) {}
+  _tsLsCache.delete(key);
+}
+
+function _getOrCreateLS(text, filename) {
+  if (!ts) return null;
+  const key = `${filename}::${text.length}::${text.slice(0, 80)}::${text.slice(-40)}`;
+  if (_tsLsCache.has(key)) return _tsLsCache.get(key);
+  if (_tsLsCache.size >= _LS_CACHE_MAX) _evictOldestLS();
+  const ls = ts.createLanguageService(_makeTSHost(text, filename), ts.createDocumentRegistry());
+  const entry = { ls };
+  _tsLsCache.set(key, entry);
+  return entry;
+}
+
 const PORT = parseInt(process.env.SYNAPSEIQ_LSP_PORT || '2087', 10);
-const VERSION = '0.5.0';
+const VERSION = '0.6.0';
 
 const SUPPORTED_LANGUAGES = [
   'python', 'typescript', 'javascript', 'lua', 'rust', 'go',
@@ -494,17 +516,15 @@ function getHoverWithTSLanguageService(text, filename, line, character) {
   if (!ts) return null;
   try {
     const offset = _tsOffset(text, line, character);
-    const langSvc = ts.createLanguageService(_makeTSHost(text, filename), ts.createDocumentRegistry());
-    try {
-      const info = langSvc.getQuickInfoAtPosition(filename, offset);
-      if (!info || !info.displayParts) return null;
-      const display = info.displayParts.map(p => p.text).join('');
-      const doc = info.documentation && info.documentation.length > 0
-        ? '\n\n' + info.documentation.map(p => p.text).join('') : '';
-      return { contents: `\`\`\`typescript\n${display}\n\`\`\`${doc}` };
-    } finally {
-      langSvc.dispose();
-    }
+    const cached = _getOrCreateLS(text, filename);
+    if (!cached) return null;
+    const langSvc = cached.ls;
+    const info = langSvc.getQuickInfoAtPosition(filename, offset);
+    if (!info || !info.displayParts) return null;
+    const display = info.displayParts.map(p => p.text).join('');
+    const doc = info.documentation && info.documentation.length > 0
+      ? '\n\n' + info.documentation.map(p => p.text).join('') : '';
+    return { contents: `\`\`\`typescript\n${display}\n\`\`\`` + doc };
   } catch (_) {
     return null;
   }
@@ -514,19 +534,17 @@ function getDefinitionWithTSLanguageService(text, filename, line, character) {
   if (!ts) return null;
   try {
     const offset = _tsOffset(text, line, character);
-    const langSvc = ts.createLanguageService(_makeTSHost(text, filename), ts.createDocumentRegistry());
-    try {
-      const defs = langSvc.getDefinitionAtPosition(filename, offset);
-      if (!defs || defs.length === 0) return null;
-      const def = defs.find(d => d.fileName === filename) || defs[0];
-      if (def.fileName !== filename) return null; // can't jump into stdlib/external
-      const sf = ts.createSourceFile(filename, text, ts.ScriptTarget.Latest, true);
-      const start = ts.getLineAndCharacterOfPosition(sf, def.textSpan.start);
-      const end   = ts.getLineAndCharacterOfPosition(sf, def.textSpan.start + def.textSpan.length);
-      return { line: start.line, col: start.character, end_line: end.line, end_col: end.character };
-    } finally {
-      langSvc.dispose();
-    }
+    const cached = _getOrCreateLS(text, filename);
+    if (!cached) return null;
+    const langSvc = cached.ls;
+    const defs = langSvc.getDefinitionAtPosition(filename, offset);
+    if (!defs || defs.length === 0) return null;
+    const def = defs.find(d => d.fileName === filename) || defs[0];
+    if (def.fileName !== filename) return null;
+    const sf = ts.createSourceFile(filename, text, ts.ScriptTarget.Latest, true);
+    const start = ts.getLineAndCharacterOfPosition(sf, def.textSpan.start);
+    const end   = ts.getLineAndCharacterOfPosition(sf, def.textSpan.start + def.textSpan.length);
+    return { line: start.line, col: start.character, end_line: end.line, end_col: end.character };
   } catch (_) {
     return null;
   }
@@ -536,50 +554,48 @@ function getSignatureHelpWithTSLanguageService(text, filename, line, character) 
   if (!ts) return null;
   try {
     const offset = _tsOffset(text, line, character);
-    const langSvc = ts.createLanguageService(_makeTSHost(text, filename), ts.createDocumentRegistry());
-    try {
-      const help = langSvc.getSignatureHelpItems(filename, offset, undefined);
-      if (!help || help.items.length === 0) return null;
+    const cached = _getOrCreateLS(text, filename);
+    if (!cached) return null;
+    const langSvc = cached.ls;
+    const help = langSvc.getSignatureHelpItems(filename, offset, undefined);
+    if (!help || help.items.length === 0) return null;
 
-      const signatures = help.items.map(item => {
-        // Build the full label by joining prefix, params (comma-separated), suffix
-        const prefix   = item.prefixDisplayParts.map(p => p.text).join('');
-        const suffix   = item.suffixDisplayParts.map(p => p.text).join('');
-        const sep      = item.separatorDisplayParts.map(p => p.text).join('');
-        const paramLabels = item.parameters.map(p => p.displayParts.map(d => d.text).join(''));
-        const label    = prefix + paramLabels.join(sep) + suffix;
+    const signatures = help.items.map(item => {
+      // Build the full label by joining prefix, params (comma-separated), suffix
+      const prefix   = item.prefixDisplayParts.map(p => p.text).join('');
+      const suffix   = item.suffixDisplayParts.map(p => p.text).join('');
+      const sep      = item.separatorDisplayParts.map(p => p.text).join('');
+      const paramLabels = item.parameters.map(p => p.displayParts.map(d => d.text).join(''));
+      const label    = prefix + paramLabels.join(sep) + suffix;
 
-        // LSP wants [start, end] character offsets into the label for each param
-        let cursor = prefix.length;
-        const lspParams = item.parameters.map((p, i) => {
-          const pLabel = paramLabels[i];
-          const start  = cursor;
-          const end    = cursor + pLabel.length;
-          cursor = end + sep.length;
-          const doc = p.documentation && p.documentation.length > 0
-            ? { kind: 'markdown', value: p.documentation.map(d => d.text).join('') } : undefined;
-          return { label: [start, end], ...(doc ? { documentation: doc } : {}) };
-        });
-
-        const itemDoc = item.documentation && item.documentation.length > 0
-          ? { kind: 'markdown', value: item.documentation.map(d => d.text).join('') } : undefined;
-
-        return {
-          label: label,
-          ...(itemDoc ? { documentation: itemDoc } : {}),
-          parameters: lspParams,
-        };
+      // LSP wants [start, end] character offsets into the label for each param
+      let cursor = prefix.length;
+      const lspParams = item.parameters.map((p, i) => {
+        const pLabel = paramLabels[i];
+        const start  = cursor;
+        const end    = cursor + pLabel.length;
+        cursor = end + sep.length;
+        const doc = p.documentation && p.documentation.length > 0
+          ? { kind: 'markdown', value: p.documentation.map(d => d.text).join('') } : undefined;
+        return { label: [start, end], ...(doc ? { documentation: doc } : {}) };
       });
 
+      const itemDoc = item.documentation && item.documentation.length > 0
+        ? { kind: 'markdown', value: item.documentation.map(d => d.text).join('') } : undefined;
+
       return {
-        signatures,
-        activeSignature: Math.min(help.selectedItemIndex || 0, signatures.length - 1),
-        activeParameter: Math.min(help.argumentIndex   || 0,
-          (signatures[help.selectedItemIndex || 0]?.parameters?.length || 1) - 1),
+        label: label,
+        ...(itemDoc ? { documentation: itemDoc } : {}),
+        parameters: lspParams,
       };
-    } finally {
-      langSvc.dispose();
-    }
+    });
+
+    return {
+      signatures,
+      activeSignature: Math.min(help.selectedItemIndex || 0, signatures.length - 1),
+      activeParameter: Math.min(help.argumentIndex   || 0,
+        (signatures[help.selectedItemIndex || 0]?.parameters?.length || 1) - 1),
+    };
   } catch (_) {
     return null;
   }
@@ -609,6 +625,114 @@ function getHover(text, language, line, character) {
     return { contents: `**${def.kind}** \`${def.name}\` — line ${def.line + 1}` };
   }
   return { contents: `\`${word}\`` };
+}
+
+function getReferences(text, filename, line, character) {
+  const offset = _tsOffset(text, line, character);
+  const lines = text.split('\n');
+  const curLine = lines[line] || '';
+  const word = (curLine.slice(0, character).match(/\w+$/) || [''])[0]
+             + (curLine.slice(character).match(/^\w+/) || [''])[0];
+  if (!word) return [];
+
+  // TS/JS: use language service for accurate cross-reference tracking
+  if (ts && filename) {
+    try {
+      const cached = _getOrCreateLS(text, filename);
+      if (cached) {
+        const refs = cached.ls.getReferencesAtPosition(filename, offset);
+        if (refs && refs.length > 0) {
+          const sf = ts.createSourceFile(filename, text, ts.ScriptTarget.Latest, true);
+          const results = refs.filter(r => r.fileName === filename).map(r => {
+            const s = ts.getLineAndCharacterOfPosition(sf, r.textSpan.start);
+            const e = ts.getLineAndCharacterOfPosition(sf, r.textSpan.start + r.textSpan.length);
+            return { line: s.line, col: s.character, end_line: e.line, end_col: e.character };
+          });
+          if (results.length > 0) return results;
+        }
+      }
+    } catch (_) {}
+  }
+
+  // Fallback: regex scan for all occurrences of the word
+  const refs = [];
+  const re = new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g');
+  lines.forEach((l, i) => {
+    let m;
+    while ((m = re.exec(l)) !== null) {
+      refs.push({ line: i, col: m.index, end_line: i, end_col: m.index + word.length });
+    }
+  });
+  return refs;
+}
+
+function formatDocument(text, language, filename) {
+  const ext = (filename || '').replace(/.*\./, '').toLowerCase() || language;
+
+  const tryFmt = (cmd, args, input) => {
+    try {
+      const r = spawnSync(cmd, args, { input, encoding: 'utf8', timeout: 10000 });
+      return (r.status === 0 && r.stdout && r.stdout !== input) ? r.stdout : null;
+    } catch (_) { return null; }
+  };
+
+  const tryFmtFile = (cmd, args) => {
+    const os = require('node:os'), fs = require('node:fs'), path = require('node:path');
+    const tmp = path.join(os.tmpdir(), `synapseiq-fmt-${Date.now()}.${ext}`);
+    try {
+      fs.writeFileSync(tmp, text, 'utf8');
+      const r = spawnSync(cmd, [...args, tmp], { encoding: 'utf8', timeout: 10000 });
+      const out = r.status === 0 ? fs.readFileSync(tmp, 'utf8') : null;
+      return (out && out !== text) ? out : null;
+    } catch (_) { return null; } finally {
+      try { require('node:fs').unlinkSync(tmp); } catch (_) {}
+    }
+  };
+
+  if (language === 'typescript' || language === 'javascript') {
+    const parser = language === 'typescript' ? 'babel-ts' : 'babel';
+    const fp = filename || `file.${ext}`;
+    return tryFmt('prettier', ['--parser', parser, '--stdin-filepath', fp], text)
+        || tryFmt('npx', ['prettier', '--parser', parser, '--stdin-filepath', fp], text);
+  }
+  if (language === 'json') return tryFmt('prettier', ['--parser', 'json', '--stdin-filepath', 'file.json'], text);
+  if (language === 'yaml') return tryFmt('prettier', ['--parser', 'yaml', '--stdin-filepath', 'file.yaml'], text);
+  if (language === 'python') return tryFmt('black', ['--quiet', '-'], text) || tryFmt('ruff', ['format', '--quiet', '-'], text);
+  if (language === 'rust') return tryFmt('rustfmt', ['--edition', '2021'], text);
+  if (language === 'go') return tryFmt('gofmt', [], text);
+  if (language === 'lua') return tryFmt('stylua', ['-'], text);
+  return null;
+}
+
+function getInlayHints(text, filename) {
+  if (!ts || !filename) return [];
+  try {
+    const cached = _getOrCreateLS(text, filename);
+    if (!cached || typeof cached.ls.getInlayHints !== 'function') return [];
+    const sf = ts.createSourceFile(filename, text, ts.ScriptTarget.Latest, true);
+    const span = ts.createTextSpan(0, text.length);
+    const hints = cached.ls.getInlayHints(filename, span, {
+      includeInlayParameterNameHints: 'all',
+      includeInlayParameterNameHintsWhenArgumentMatchesName: false,
+      includeInlayFunctionParameterTypeHints: true,
+      includeInlayVariableTypeHints: true,
+      includeInlayPropertyDeclarationTypeHints: true,
+      includeInlayFunctionLikeReturnTypeHints: true,
+      includeInlayEnumMemberValueHints: false,
+    });
+    return (hints || []).map(h => {
+      const pos = ts.getLineAndCharacterOfPosition(sf, h.position);
+      const label = typeof h.text === 'string' ? h.text
+        : Array.isArray(h.text) ? h.text.map(p => (typeof p === 'string' ? p : p.text)).join('') : String(h.text || '');
+      return {
+        position: { line: pos.line, character: pos.character },
+        label,
+        kind: h.kind === 'Type' ? 1 : 2,
+        paddingLeft: !!(h.whitespaceBefore),
+        paddingRight: !!(h.whitespaceAfter),
+      };
+    }).filter(h => h.label);
+  } catch (_) { return []; }
 }
 
 // ---------------------------------------------------------------------------
@@ -649,6 +773,9 @@ const server = http.createServer(async (req, res) => {
         typescript_hover:      ts !== null,
         typescript_definition: ts !== null,
         typescript_signature:  ts !== null,
+        typescript_references: ts !== null,
+        typescript_formatting: true,
+        typescript_inlay_hints: ts !== null,
         rust_diagnostics:      true,
         go_diagnostics:        true,
         lua_diagnostics:       true,
@@ -730,6 +857,30 @@ const server = http.createServer(async (req, res) => {
     return send(res, 200, {
       schema: 'sourceos.synapseiq.lsp.signature.v0',
       file: file || null, language, signature_help: help, analyzed_at: now,
+    });
+  }
+
+  if (req.url === '/lsp/references') {
+    const refs = getReferences(text, file, line, character);
+    return send(res, 200, {
+      schema: 'sourceos.synapseiq.lsp.references.v0',
+      file: file || null, language, references: refs, reference_count: refs.length, analyzed_at: now,
+    });
+  }
+
+  if (req.url === '/lsp/format') {
+    const formatted = formatDocument(text, language, file);
+    return send(res, 200, {
+      schema: 'sourceos.synapseiq.lsp.format.v0',
+      file: file || null, language, formatted, available: formatted !== null, analyzed_at: now,
+    });
+  }
+
+  if (req.url === '/lsp/inlay-hints') {
+    const hints = (language === 'typescript' || language === 'javascript') ? getInlayHints(text, file) : [];
+    return send(res, 200, {
+      schema: 'sourceos.synapseiq.lsp.inlay-hints.v0',
+      file: file || null, language, hints, hint_count: hints.length, analyzed_at: now,
     });
   }
 
@@ -837,9 +988,11 @@ function runLspServer() {
           textDocumentSync: 1,
           hoverProvider: true,
           definitionProvider: true,
-          referencesProvider: false,
+          referencesProvider: true,
           completionProvider:    { triggerCharacters: ['.', '/', ':'] },
           signatureHelpProvider: { triggerCharacters: ['(', ',', '<'] },
+          documentFormattingProvider: true,
+          inlayHintProvider: { resolveProvider: false },
         },
         serverInfo: { name: 'synapseiq-lsp', version: VERSION },
       });
@@ -924,6 +1077,45 @@ function runLspServer() {
         respond(id, help || null);
       } else {
         respond(id, null);
+      }
+
+    } else if (method === 'textDocument/references') {
+      const uri = params.textDocument.uri;
+      const entry = cache.get(uri);
+      if (!entry || id === undefined) { if (id !== undefined) respond(id, []); return; }
+      const { line, character } = params.position;
+      const filename = uri.startsWith('file://') ? uri.slice(7) : null;
+      const refs = getReferences(entry.text, filename, line, character);
+      respond(id, refs.map(r => ({
+        uri,
+        range: {
+          start: { line: r.line, character: r.col },
+          end:   { line: r.end_line, character: r.end_col },
+        },
+      })));
+
+    } else if (method === 'textDocument/formatting') {
+      const uri = params.textDocument.uri;
+      const entry = cache.get(uri);
+      if (!entry || id === undefined) { if (id !== undefined) respond(id, []); return; }
+      const filename = uri.startsWith('file://') ? uri.slice(7) : null;
+      const formatted = formatDocument(entry.text, entry.lang, filename);
+      if (!formatted) { respond(id, []); return; }
+      const lineCount = entry.text.split('\n').length;
+      respond(id, [{
+        range: { start: { line: 0, character: 0 }, end: { line: lineCount, character: 0 } },
+        newText: formatted,
+      }]);
+
+    } else if (method === 'textDocument/inlayHint') {
+      const uri = params.textDocument.uri;
+      const entry = cache.get(uri);
+      if (!entry || id === undefined) { if (id !== undefined) respond(id, []); return; }
+      const filename = uri.startsWith('file://') ? uri.slice(7) : null;
+      if ((entry.lang === 'typescript' || entry.lang === 'javascript') && filename) {
+        respond(id, getInlayHints(entry.text, filename));
+      } else {
+        respond(id, []);
       }
 
     } else if (method === 'textDocument/completion') {
