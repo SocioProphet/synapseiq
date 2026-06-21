@@ -1,15 +1,21 @@
 #!/usr/bin/env node
-// SynapseIQ Language Server — HTTP gateway
-// Provides diagnostics, symbols, hover, and completions via a lightweight HTTP API.
-// No build step — plain Node.js using only stdlib.
+// SynapseIQ Language Server — HTTP gateway + LSP stdio transport
+// Real AST parsing: TypeScript compiler API for TS/JS, python3 ast for Python.
+// Fallback: Babel parser (JS/JSX), regex heuristics for everything else.
 
 'use strict';
 
 const http = require('node:http');
 const { spawnSync } = require('node:child_process');
 
+// Optional parsers — loaded once, used everywhere
+let ts = null;
+let babelParser = null;
+try { ts = require('typescript'); } catch (_) {}
+try { babelParser = require('@babel/parser'); } catch (_) {}
+
 const PORT = parseInt(process.env.SYNAPSEIQ_LSP_PORT || '2087', 10);
-const VERSION = '0.1.0';
+const VERSION = '0.4.0';
 
 const SUPPORTED_LANGUAGES = [
   'python', 'typescript', 'javascript', 'lua', 'rust', 'go',
@@ -42,16 +48,122 @@ function detectLanguage(filename) {
 }
 
 // ---------------------------------------------------------------------------
+// Real AST parsers (TypeScript compiler API)
+// ---------------------------------------------------------------------------
+
+function extractSymbolsWithTSAPI(text, filename) {
+  if (!ts) return null;
+  try {
+    const sf = ts.createSourceFile(filename, text, ts.ScriptTarget.Latest, true);
+    const symbols = [];
+
+    function pos(node) {
+      const { line, character } = ts.getLineAndCharacterOfPosition(sf, node.getStart(sf));
+      return { line, col: character };
+    }
+
+    function visit(node) {
+      if (ts.isFunctionDeclaration(node) && node.name) {
+        symbols.push({ name: node.name.text, kind: 'function', ...pos(node) });
+      } else if (ts.isClassDeclaration(node) && node.name) {
+        symbols.push({ name: node.name.text, kind: 'class', ...pos(node) });
+      } else if (ts.isInterfaceDeclaration(node)) {
+        symbols.push({ name: node.name.text, kind: 'interface', ...pos(node) });
+      } else if (ts.isTypeAliasDeclaration(node)) {
+        symbols.push({ name: node.name.text, kind: 'type', ...pos(node) });
+      } else if (ts.isEnumDeclaration(node)) {
+        symbols.push({ name: node.name.text, kind: 'enum', ...pos(node) });
+      } else if (ts.isVariableStatement(node)) {
+        for (const decl of node.declarationList.declarations) {
+          if (ts.isIdentifier(decl.name)) {
+            const isArrow = decl.initializer && (
+              ts.isArrowFunction(decl.initializer) || ts.isFunctionExpression(decl.initializer)
+            );
+            symbols.push({ name: decl.name.text, kind: isArrow ? 'function' : 'variable', ...pos(decl) });
+          }
+        }
+      } else if (ts.isMethodDeclaration(node) && ts.isIdentifier(node.name)) {
+        symbols.push({ name: node.name.text, kind: 'function', ...pos(node) });
+      } else if ((ts.isArrowFunction(node) || ts.isFunctionExpression(node)) && node.name) {
+        symbols.push({ name: node.name.text, kind: 'function', ...pos(node) });
+      }
+      ts.forEachChild(node, visit);
+    }
+
+    visit(sf);
+    return symbols;
+  } catch (_) {
+    return null;
+  }
+}
+
+function getDiagnosticsWithTSAPI(text, filename) {
+  if (!ts) return null;
+  try {
+    const fname = filename || 'file.ts';
+    const compilerHost = {
+      getSourceFile: (name) => name === fname
+        ? ts.createSourceFile(name, text, ts.ScriptTarget.Latest)
+        : undefined,
+      writeFile: () => {},
+      getDefaultLibFileName: () => 'lib.d.ts',
+      useCaseSensitiveFileNames: () => false,
+      getCanonicalFileName: (f) => f,
+      getCurrentDirectory: () => '/',
+      getNewLine: () => '\n',
+      fileExists: (f) => f === fname,
+      readFile: (f) => f === fname ? text : undefined,
+      directoryExists: () => true,
+      getDirectories: () => [],
+    };
+    const program = ts.createProgram([fname], {
+      noEmit: true,
+      strict: false,
+      allowJs: true,
+      checkJs: fname.endsWith('.js') || fname.endsWith('.jsx'),
+      target: ts.ScriptTarget.Latest,
+      module: ts.ModuleKind.ESNext,
+      skipLibCheck: true,
+      noResolve: true,
+      noLib: true,
+    }, compilerHost);
+    const sf = program.getSourceFile(fname);
+    if (!sf) return null;
+    const rawDiags = ts.getPreEmitDiagnostics(program, sf);
+    // Filter structural/stdlib errors that don't belong to user code
+    const NOISE_CODES = new Set([2318, 6053, 6054, 1208]);
+    return Array.from(rawDiags).filter(d => !NOISE_CODES.has(d.code) && d.file).map(d => {
+      let line = 0, col = 0, endLine = 0, endCol = 1;
+      if (d.file && d.start !== undefined) {
+        const s = ts.getLineAndCharacterOfPosition(d.file, d.start);
+        line = s.line; col = s.character;
+        if (d.length) {
+          const e = ts.getLineAndCharacterOfPosition(d.file, d.start + d.length);
+          endLine = e.line; endCol = e.character;
+        } else { endLine = line; endCol = col + 1; }
+      }
+      return {
+        line, col, end_line: endLine, end_col: endCol,
+        severity: d.category === ts.DiagnosticCategory.Error ? 'error' : 'warning',
+        message: ts.flattenDiagnosticMessageText(d.messageText, ' '),
+        code: d.code,
+        source: 'synapseiq-lsp/typescript',
+      };
+    });
+  } catch (_) {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Symbol extraction
 // ---------------------------------------------------------------------------
 
-function extractSymbols(text, language) {
+function extractSymbols(text, language, filename) {
   const symbols = [];
-  const lines = text.split('\n');
 
   const addMatch = (pattern, kind, opts = {}) => {
-    const flags = opts.flags || 'gm';
-    const re = new RegExp(pattern, flags);
+    const re = new RegExp(pattern, opts.flags || 'gm');
     let m;
     while ((m = re.exec(text)) !== null) {
       const lineNo = text.slice(0, m.index).split('\n').length - 1;
@@ -68,15 +180,55 @@ function extractSymbols(text, language) {
       break;
 
     case 'typescript':
-    case 'javascript':
-      addMatch(/(?:^|\s)function\s+(\w+)\s*\(/, 'function');
-      addMatch(/(?:^|\s)(?:async\s+)?(?:export\s+)?(?:default\s+)?function\s+(\w+)/, 'function');
+    case 'javascript': {
+      const ext = language === 'typescript' ? 'ts' : 'js';
+      const fname = filename || `file.${ext}`;
+      const tsSymbols = extractSymbolsWithTSAPI(text, fname);
+      if (tsSymbols) return tsSymbols;
+      // Fallback to Babel parser
+      if (babelParser) {
+        try {
+          const ast = babelParser.parse(text, {
+            sourceType: 'unambiguous', plugins: ['typescript', 'jsx', 'decorators-legacy'],
+          });
+          const walk = (node) => {
+            if (!node || typeof node !== 'object') return;
+            const { type, id, key, loc } = node;
+            const line = (loc && loc.start && loc.start.line - 1) || 0;
+            const col = (loc && loc.start && loc.start.column) || 0;
+            if ((type === 'FunctionDeclaration' || type === 'FunctionExpression') && id) {
+              symbols.push({ name: id.name, kind: 'function', line, col });
+            } else if (type === 'ClassDeclaration' && id) {
+              symbols.push({ name: id.name, kind: 'class', line, col });
+            } else if (type === 'TSInterfaceDeclaration') {
+              symbols.push({ name: id.name, kind: 'interface', line, col });
+            } else if (type === 'TSTypeAliasDeclaration') {
+              symbols.push({ name: id.name, kind: 'type', line, col });
+            } else if (type === 'TSEnumDeclaration') {
+              symbols.push({ name: id.name, kind: 'enum', line, col });
+            } else if (type === 'VariableDeclarator' && id && id.type === 'Identifier') {
+              const isArrow = node.init && (node.init.type === 'ArrowFunctionExpression' || node.init.type === 'FunctionExpression');
+              symbols.push({ name: id.name, kind: isArrow ? 'function' : 'variable', line, col });
+            } else if ((type === 'ClassMethod' || type === 'ObjectMethod') && key && key.type === 'Identifier') {
+              symbols.push({ name: key.name, kind: 'function', line, col });
+            }
+            for (const v of Object.values(node)) {
+              if (Array.isArray(v)) v.forEach(walk);
+              else if (v && typeof v === 'object' && v.type) walk(v);
+            }
+          };
+          walk(ast.program);
+          return symbols;
+        } catch (_) { /* fall through to regex */ }
+      }
+      // Last resort: regex
+      addMatch(/(?:^|\s)(?:export\s+)?(?:async\s+)?function\s+(\w+)/, 'function');
       addMatch(/(?:^|\s)class\s+(\w+)[\s{]/, 'class');
       addMatch(/(?:^|\s)interface\s+(\w+)[\s{]/, 'interface');
       addMatch(/(?:^|\s)type\s+(\w+)\s*=/, 'type');
       addMatch(/(?:^|\s)(?:const|let|var)\s+(\w+)\s*=/, 'variable');
-      addMatch(/(?:^|\s)(?:export\s+)?(?:const|let)\s+(\w+)\s*[:=]/, 'variable');
       break;
+    }
 
     case 'lua':
       addMatch(/^function\s+([\w.:]+)\s*\(/, 'function');
@@ -181,10 +333,113 @@ except SyntaxError as e:
     return diags;
   }
 
-  // Generic bracket balance check for JS/TS/Rust/Go/Lua
-  if (['javascript', 'typescript', 'rust', 'go'].includes(language)) {
-    let depth = 0;
-    let lastOpen = -1;
+  // TypeScript compiler — real type diagnostics for TS/JS
+  if (language === 'typescript' || language === 'javascript') {
+    const ext = language === 'typescript' ? 'ts' : 'js';
+    const fname = (filename && filename.match(/\.[tj]sx?$/)) ? filename : `file.${ext}`;
+    const tsDiags = getDiagnosticsWithTSAPI(text, fname);
+    if (tsDiags !== null) return tsDiags;
+    // Fallback: bracket balance
+  }
+
+  // Rust — real diagnostics via rustc --error-format=json (stdin mode)
+  if (language === 'rust') {
+    const res = spawnSync('rustc', ['--error-format=json', '--edition=2021', '--crate-type=lib', '-'], {
+      input: text, encoding: 'utf8', timeout: 15000,
+    });
+    // rustc writes JSON diagnostics to stderr, one per line
+    const output = (res.stderr || '') + (res.stdout || '');
+    for (const raw of output.split('\n')) {
+      if (!raw.trim().startsWith('{')) continue;
+      try {
+        const d = JSON.parse(raw);
+        if (!d.spans || d.spans.length === 0) continue;
+        const span = d.spans.find(s => s.is_primary) || d.spans[0];
+        const sev = d.level === 'error' ? 'error' : d.level === 'warning' ? 'warning' : 'info';
+        diags.push({
+          line: (span.line_start || 1) - 1,
+          col: (span.column_start || 1) - 1,
+          end_line: (span.line_end || span.line_start || 1) - 1,
+          end_col: (span.column_end || span.column_start || 1) - 1,
+          severity: sev,
+          message: d.message || '',
+          code: d.code ? (d.code.code || '') : '',
+          source: 'synapseiq-lsp/rustc',
+        });
+      } catch (_) { /* non-JSON line */ }
+    }
+    if (diags.length > 0) return diags;
+    // rustc not installed — fall through to bracket balance
+  }
+
+  // Go — real diagnostics via go build (writes to temp file, reads stderr)
+  if (language === 'go') {
+    const os = require('node:os');
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'synapseiq-go-'));
+    const tmpFile = path.join(tmpDir, 'synapseiq_check.go');
+    try {
+      fs.writeFileSync(tmpFile, text, 'utf8');
+      const res = spawnSync('go', ['build', '-gcflags=-e', tmpFile], {
+        encoding: 'utf8', timeout: 15000,
+        env: { ...process.env, GOPATH: tmpDir },
+      });
+      const stderr = res.stderr || '';
+      // go build errors: "filename:line:col: message"
+      const re = /^.*?:(\d+):(\d+):\s+(.+)$/gm;
+      let m;
+      while ((m = re.exec(stderr)) !== null) {
+        const line = parseInt(m[1], 10) - 1;
+        const col = parseInt(m[2], 10) - 1;
+        diags.push({ line, col, end_line: line, end_col: col + 1, severity: 'error', message: m[3], source: 'synapseiq-lsp/go' });
+      }
+    } finally {
+      try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
+    }
+    if (diags.length > 0) return diags;
+    // go not installed — fall through
+  }
+
+  // Lua — syntax check via luac -p (stdin not supported, use temp file)
+  if (language === 'lua') {
+    const os = require('node:os');
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const tmpFile = path.join(os.tmpdir(), `synapseiq-lua-${Date.now()}.lua`);
+    try {
+      fs.writeFileSync(tmpFile, text, 'utf8');
+      const res = spawnSync('luac', ['-p', tmpFile], { encoding: 'utf8', timeout: 5000 });
+      const stderr = res.stderr || '';
+      // luac: luac: file:line: message
+      const re = /[^:]+:(\d+):\s+(.+)/g;
+      let m;
+      while ((m = re.exec(stderr)) !== null) {
+        const line = parseInt(m[1], 10) - 1;
+        diags.push({ line, col: 0, end_line: line, end_col: 1, severity: 'error', message: m[2], source: 'synapseiq-lsp/luac' });
+      }
+    } finally {
+      try { require('node:fs').unlinkSync(tmpFile); } catch (_) {}
+    }
+    return diags;
+  }
+
+  // Shell — bash -n syntax check
+  if (language === 'shell') {
+    const res = spawnSync('bash', ['-n', '/dev/stdin'], { input: text, encoding: 'utf8', timeout: 5000 });
+    const stderr = res.stderr || '';
+    const re = /line (\d+):\s*(.+)/g;
+    let m;
+    while ((m = re.exec(stderr)) !== null) {
+      const line = parseInt(m[1], 10) - 1;
+      diags.push({ line, col: 0, end_line: line, end_col: 1, severity: 'error', message: m[2], source: 'synapseiq-lsp/bash' });
+    }
+    return diags;
+  }
+
+  // Fallback bracket balance for Rust/Go if compiler not installed
+  if (['rust', 'go', 'javascript', 'typescript'].includes(language)) {
+    let depth = 0, lastOpen = -1;
     for (let i = 0; i < text.length; i++) {
       if (text[i] === '{') { depth++; lastOpen = i; }
       if (text[i] === '}') depth--;
@@ -204,22 +459,71 @@ except SyntaxError as e:
 // Hover
 // ---------------------------------------------------------------------------
 
+function getHoverWithTSLanguageService(text, filename, line, character) {
+  if (!ts) return null;
+  try {
+    const lines = text.split('\n');
+    let offset = 0;
+    for (let i = 0; i < line && i < lines.length; i++) offset += lines[i].length + 1;
+    offset += character;
+
+    const host = {
+      getScriptFileNames: () => [filename],
+      getScriptVersion: () => '1',
+      getScriptSnapshot: (name) =>
+        name === filename ? ts.ScriptSnapshot.fromString(text) : undefined,
+      getCurrentDirectory: () => '/',
+      getCompilationSettings: () => ({
+        noEmit: true, strict: false, allowJs: true,
+        target: ts.ScriptTarget.Latest, module: ts.ModuleKind.ESNext,
+        noResolve: true, noLib: true, skipLibCheck: true,
+      }),
+      getDefaultLibFileName: () => '',
+      fileExists: (name) => name === filename,
+      readFile: (name) => name === filename ? text : undefined,
+      directoryExists: () => true,
+      getDirectories: () => [],
+      useCaseSensitiveFileNames: () => false,
+    };
+
+    const langSvc = ts.createLanguageService(host, ts.createDocumentRegistry());
+    try {
+      const info = langSvc.getQuickInfoAtPosition(filename, offset);
+      if (!info || !info.displayParts) return null;
+      const display = info.displayParts.map(p => p.text).join('');
+      const doc = info.documentation && info.documentation.length > 0
+        ? '\n\n' + info.documentation.map(p => p.text).join('') : '';
+      return { contents: `\`\`\`typescript\n${display}\n\`\`\`${doc}` };
+    } finally {
+      langSvc.dispose();
+    }
+  } catch (_) {
+    return null;
+  }
+}
+
 function getHover(text, language, line, character) {
+  // TypeScript/JavaScript: try real language service first
+  if ((language === 'typescript' || language === 'javascript') && ts) {
+    const ext = language === 'typescript' ? 'ts' : 'js';
+    const fname = `hover.${ext}`;
+    const result = getHoverWithTSLanguageService(text, fname, line, character);
+    if (result) return result;
+  }
+
   const lines = text.split('\n');
   const currentLine = lines[line] || '';
-  // Find the word at the given character position
   const before = currentLine.slice(0, character);
   const after = currentLine.slice(character);
-  const wordBefore = before.match(/[\w.]+$/) || [''];
-  const wordAfter = after.match(/^[\w.]+/) || [''];
-  const word = wordBefore[0] + wordAfter[0];
+  const wordBefore = (before.match(/[\w.]+$/) || [''])[0];
+  const wordAfter = (after.match(/^[\w.]+/) || [''])[0];
+  const word = wordBefore + wordAfter;
   if (!word) return null;
 
-  // Find where this symbol is defined
-  const symbols = extractSymbols(text, language);
+  const symbols = extractSymbols(text, language, null);
   const def = symbols.find(s => s.name === word);
   if (def) {
-    return { contents: `**${def.kind}** \`${def.name}\` — defined at line ${def.line + 1}` };
+    return { contents: `**${def.kind}** \`${def.name}\` — line ${def.line + 1}` };
   }
   return { contents: `\`${word}\`` };
 }
@@ -251,7 +555,21 @@ const server = http.createServer(async (req, res) => {
 
   // Health
   if (req.method === 'GET' && (req.url === '/health' || req.url === '/healthz')) {
-    return send(res, 200, { status: 'ok', service: 'synapseiq-lsp', version: VERSION, port: PORT, languages: SUPPORTED_LANGUAGES });
+    return send(res, 200, {
+      status: 'ok', service: 'synapseiq-lsp', version: VERSION, port: PORT,
+      languages: SUPPORTED_LANGUAGES,
+      capabilities: {
+        typescript_ast: ts !== null,
+        babel_parser: babelParser !== null,
+        python_ast: true,
+        real_type_checking: ts !== null,
+        typescript_hover: ts !== null,
+        rust_diagnostics: true,
+        go_diagnostics: true,
+        lua_diagnostics: true,
+        shell_diagnostics: true,
+      },
+    });
   }
 
   if (req.method !== 'POST') {
@@ -279,7 +597,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.url === '/lsp/symbols') {
-    const symbols = extractSymbols(text, language);
+    const symbols = extractSymbols(text, language, file);
     return send(res, 200, {
       schema: 'sourceos.synapseiq.lsp.symbols.v0',
       file: file || null,
@@ -302,7 +620,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.url === '/lsp/complete') {
-    const symbols = extractSymbols(text, language);
+    const symbols = extractSymbols(text, language, file);
     const completions = symbols.map(s => ({ label: s.name, kind: s.kind, detail: `${s.kind} at line ${s.line + 1}` }));
     return send(res, 200, {
       schema: 'sourceos.synapseiq.lsp.completions.v0',
@@ -379,7 +697,8 @@ function runLspServer() {
   }
 
   function pushDiagnostics(uri, text, lang) {
-    const diags = extractDiagnostics(text, lang, null);
+    const filename = uri.startsWith('file://') ? uri.slice(7) : null;
+    const diags = extractDiagnostics(text, lang, filename);
     const sevMap = { error: 1, warning: 2, info: 3, hint: 4 };
     notify('textDocument/publishDiagnostics', {
       uri,
@@ -435,7 +754,8 @@ function runLspServer() {
       const entry = cache.get(uri);
       if (!entry || id === undefined) { if (id !== undefined) respond(id, { isIncomplete: false, items: [] }); return; }
       const kindMap = { function: 3, class: 7, variable: 6, interface: 8, type: 25, struct: 22, enum: 13, trait: 8 };
-      const items = extractSymbols(entry.text, entry.lang).map(s => ({
+      const filename = uri.startsWith('file://') ? uri.slice(7) : null;
+      const items = extractSymbols(entry.text, entry.lang, filename).map(s => ({
         label: s.name,
         kind: kindMap[s.kind] || 6,
         detail: `${s.kind} (line ${s.line + 1})`,
