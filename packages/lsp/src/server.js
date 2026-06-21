@@ -15,7 +15,7 @@ try { ts = require('typescript'); } catch (_) {}
 try { babelParser = require('@babel/parser'); } catch (_) {}
 
 const PORT = parseInt(process.env.SYNAPSEIQ_LSP_PORT || '2087', 10);
-const VERSION = '0.4.0';
+const VERSION = '0.5.0';
 
 const SUPPORTED_LANGUAGES = [
   'python', 'typescript', 'javascript', 'lua', 'rust', 'go',
@@ -459,34 +459,42 @@ except SyntaxError as e:
 // Hover
 // ---------------------------------------------------------------------------
 
+// Shared TS language-service host — accepts a single in-memory file.
+// All TS features (hover, definition, signatureHelp) use this.
+function _makeTSHost(text, filename) {
+  return {
+    getScriptFileNames:     () => [filename],
+    getScriptVersion:       () => '1',
+    getScriptSnapshot:      (name) =>
+      name === filename ? ts.ScriptSnapshot.fromString(text) : undefined,
+    getCurrentDirectory:    () => '/',
+    getCompilationSettings: () => ({
+      noEmit: true, strict: false, allowJs: true,
+      target: ts.ScriptTarget.Latest, module: ts.ModuleKind.ESNext,
+      noResolve: true, noLib: true, skipLibCheck: true,
+    }),
+    getDefaultLibFileName:  () => '',
+    fileExists:             (name) => name === filename,
+    readFile:               (name) => name === filename ? text : undefined,
+    directoryExists:        () => true,
+    getDirectories:         () => [],
+    useCaseSensitiveFileNames: () => false,
+  };
+}
+
+// Compute character offset from (line, character) — used by all TS features.
+function _tsOffset(text, line, character) {
+  const lines = text.split('\n');
+  let offset = 0;
+  for (let i = 0; i < line && i < lines.length; i++) offset += lines[i].length + 1;
+  return offset + character;
+}
+
 function getHoverWithTSLanguageService(text, filename, line, character) {
   if (!ts) return null;
   try {
-    const lines = text.split('\n');
-    let offset = 0;
-    for (let i = 0; i < line && i < lines.length; i++) offset += lines[i].length + 1;
-    offset += character;
-
-    const host = {
-      getScriptFileNames: () => [filename],
-      getScriptVersion: () => '1',
-      getScriptSnapshot: (name) =>
-        name === filename ? ts.ScriptSnapshot.fromString(text) : undefined,
-      getCurrentDirectory: () => '/',
-      getCompilationSettings: () => ({
-        noEmit: true, strict: false, allowJs: true,
-        target: ts.ScriptTarget.Latest, module: ts.ModuleKind.ESNext,
-        noResolve: true, noLib: true, skipLibCheck: true,
-      }),
-      getDefaultLibFileName: () => '',
-      fileExists: (name) => name === filename,
-      readFile: (name) => name === filename ? text : undefined,
-      directoryExists: () => true,
-      getDirectories: () => [],
-      useCaseSensitiveFileNames: () => false,
-    };
-
-    const langSvc = ts.createLanguageService(host, ts.createDocumentRegistry());
+    const offset = _tsOffset(text, line, character);
+    const langSvc = ts.createLanguageService(_makeTSHost(text, filename), ts.createDocumentRegistry());
     try {
       const info = langSvc.getQuickInfoAtPosition(filename, offset);
       if (!info || !info.displayParts) return null;
@@ -494,6 +502,81 @@ function getHoverWithTSLanguageService(text, filename, line, character) {
       const doc = info.documentation && info.documentation.length > 0
         ? '\n\n' + info.documentation.map(p => p.text).join('') : '';
       return { contents: `\`\`\`typescript\n${display}\n\`\`\`${doc}` };
+    } finally {
+      langSvc.dispose();
+    }
+  } catch (_) {
+    return null;
+  }
+}
+
+function getDefinitionWithTSLanguageService(text, filename, line, character) {
+  if (!ts) return null;
+  try {
+    const offset = _tsOffset(text, line, character);
+    const langSvc = ts.createLanguageService(_makeTSHost(text, filename), ts.createDocumentRegistry());
+    try {
+      const defs = langSvc.getDefinitionAtPosition(filename, offset);
+      if (!defs || defs.length === 0) return null;
+      const def = defs.find(d => d.fileName === filename) || defs[0];
+      if (def.fileName !== filename) return null; // can't jump into stdlib/external
+      const sf = ts.createSourceFile(filename, text, ts.ScriptTarget.Latest, true);
+      const start = ts.getLineAndCharacterOfPosition(sf, def.textSpan.start);
+      const end   = ts.getLineAndCharacterOfPosition(sf, def.textSpan.start + def.textSpan.length);
+      return { line: start.line, col: start.character, end_line: end.line, end_col: end.character };
+    } finally {
+      langSvc.dispose();
+    }
+  } catch (_) {
+    return null;
+  }
+}
+
+function getSignatureHelpWithTSLanguageService(text, filename, line, character) {
+  if (!ts) return null;
+  try {
+    const offset = _tsOffset(text, line, character);
+    const langSvc = ts.createLanguageService(_makeTSHost(text, filename), ts.createDocumentRegistry());
+    try {
+      const help = langSvc.getSignatureHelpItems(filename, offset, undefined);
+      if (!help || help.items.length === 0) return null;
+
+      const signatures = help.items.map(item => {
+        // Build the full label by joining prefix, params (comma-separated), suffix
+        const prefix   = item.prefixDisplayParts.map(p => p.text).join('');
+        const suffix   = item.suffixDisplayParts.map(p => p.text).join('');
+        const sep      = item.separatorDisplayParts.map(p => p.text).join('');
+        const paramLabels = item.parameters.map(p => p.displayParts.map(d => d.text).join(''));
+        const label    = prefix + paramLabels.join(sep) + suffix;
+
+        // LSP wants [start, end] character offsets into the label for each param
+        let cursor = prefix.length;
+        const lspParams = item.parameters.map((p, i) => {
+          const pLabel = paramLabels[i];
+          const start  = cursor;
+          const end    = cursor + pLabel.length;
+          cursor = end + sep.length;
+          const doc = p.documentation && p.documentation.length > 0
+            ? { kind: 'markdown', value: p.documentation.map(d => d.text).join('') } : undefined;
+          return { label: [start, end], ...(doc ? { documentation: doc } : {}) };
+        });
+
+        const itemDoc = item.documentation && item.documentation.length > 0
+          ? { kind: 'markdown', value: item.documentation.map(d => d.text).join('') } : undefined;
+
+        return {
+          label: label,
+          ...(itemDoc ? { documentation: itemDoc } : {}),
+          parameters: lspParams,
+        };
+      });
+
+      return {
+        signatures,
+        activeSignature: Math.min(help.selectedItemIndex || 0, signatures.length - 1),
+        activeParameter: Math.min(help.argumentIndex   || 0,
+          (signatures[help.selectedItemIndex || 0]?.parameters?.length || 1) - 1),
+      };
     } finally {
       langSvc.dispose();
     }
@@ -559,15 +642,17 @@ const server = http.createServer(async (req, res) => {
       status: 'ok', service: 'synapseiq-lsp', version: VERSION, port: PORT,
       languages: SUPPORTED_LANGUAGES,
       capabilities: {
-        typescript_ast: ts !== null,
-        babel_parser: babelParser !== null,
-        python_ast: true,
-        real_type_checking: ts !== null,
-        typescript_hover: ts !== null,
-        rust_diagnostics: true,
-        go_diagnostics: true,
-        lua_diagnostics: true,
-        shell_diagnostics: true,
+        typescript_ast:        ts !== null,
+        babel_parser:          babelParser !== null,
+        python_ast:            true,
+        real_type_checking:    ts !== null,
+        typescript_hover:      ts !== null,
+        typescript_definition: ts !== null,
+        typescript_signature:  ts !== null,
+        rust_diagnostics:      true,
+        go_diagnostics:        true,
+        lua_diagnostics:       true,
+        shell_diagnostics:     true,
       },
     });
   }
@@ -612,10 +697,39 @@ const server = http.createServer(async (req, res) => {
     const hover = getHover(text, language, line, character);
     return send(res, 200, {
       schema: 'sourceos.synapseiq.lsp.hover.v0',
-      file: file || null,
-      language,
-      hover,
-      analyzed_at: now,
+      file: file || null, language, hover, analyzed_at: now,
+    });
+  }
+
+  if (req.url === '/lsp/definition') {
+    let def = null;
+    if ((language === 'typescript' || language === 'javascript') && ts && file) {
+      def = getDefinitionWithTSLanguageService(text, file, line, character);
+    }
+    if (!def) {
+      const lines = text.split('\n');
+      const curLine = lines[line] || '';
+      const word = (curLine.slice(0, character).match(/\w+$/) || [''])[0]
+                 + (curLine.slice(character).match(/^\w+/) || [''])[0];
+      if (word) {
+        const sym = extractSymbols(text, language, file).find(s => s.name === word);
+        if (sym) def = { line: sym.line, col: sym.col || 0, end_line: sym.line, end_col: (sym.col || 0) + word.length };
+      }
+    }
+    return send(res, 200, {
+      schema: 'sourceos.synapseiq.lsp.definition.v0',
+      file: file || null, language, definition: def, analyzed_at: now,
+    });
+  }
+
+  if (req.url === '/lsp/signature') {
+    let help = null;
+    if ((language === 'typescript' || language === 'javascript') && ts && file) {
+      help = getSignatureHelpWithTSLanguageService(text, file, line, character);
+    }
+    return send(res, 200, {
+      schema: 'sourceos.synapseiq.lsp.signature.v0',
+      file: file || null, language, signature_help: help, analyzed_at: now,
     });
   }
 
@@ -722,7 +836,10 @@ function runLspServer() {
         capabilities: {
           textDocumentSync: 1,
           hoverProvider: true,
-          completionProvider: { triggerCharacters: ['.', '/', ':'] },
+          definitionProvider: true,
+          referencesProvider: false,
+          completionProvider:    { triggerCharacters: ['.', '/', ':'] },
+          signatureHelpProvider: { triggerCharacters: ['(', ',', '<'] },
         },
         serverInfo: { name: 'synapseiq-lsp', version: VERSION },
       });
@@ -749,6 +866,66 @@ function runLspServer() {
       const { line, character } = params.position;
       const hover = getHover(entry.text, entry.lang, line, character);
       respond(id, hover ? { contents: { kind: 'markdown', value: hover.contents } } : null);
+
+    } else if (method === 'textDocument/definition') {
+      const uri = params.textDocument.uri;
+      const entry = cache.get(uri);
+      if (!entry || id === undefined) { if (id !== undefined) respond(id, null); return; }
+      const { line, character } = params.position;
+      const filename = uri.startsWith('file://') ? uri.slice(7) : null;
+
+      // For TS/JS: use language service for accurate definition
+      if ((entry.lang === 'typescript' || entry.lang === 'javascript') && ts && filename) {
+        const ext = entry.lang === 'typescript' ? 'ts' : 'js';
+        const def = getDefinitionWithTSLanguageService(entry.text, filename || `file.${ext}`, line, character);
+        if (def) {
+          respond(id, [{
+            uri,
+            range: {
+              start: { line: def.line,     character: def.col     },
+              end:   { line: def.end_line, character: def.end_col },
+            },
+          }]);
+          return;
+        }
+      }
+
+      // Fallback: symbol table lookup — find the word under cursor and locate its definition
+      const lines = entry.text.split('\n');
+      const curLine = lines[line] || '';
+      const word = (curLine.slice(0, character).match(/\w+$/) || [''])[0]
+                 + (curLine.slice(character).match(/^\w+/) || [''])[0];
+      if (word) {
+        const symbols = extractSymbols(entry.text, entry.lang, filename);
+        const def = symbols.find(s => s.name === word);
+        if (def) {
+          respond(id, [{
+            uri,
+            range: {
+              start: { line: def.line, character: def.col || 0 },
+              end:   { line: def.line, character: (def.col || 0) + word.length },
+            },
+          }]);
+          return;
+        }
+      }
+      respond(id, null);
+
+    } else if (method === 'textDocument/signatureHelp') {
+      const uri = params.textDocument.uri;
+      const entry = cache.get(uri);
+      if (!entry || id === undefined) { if (id !== undefined) respond(id, null); return; }
+      const { line, character } = params.position;
+      const filename = uri.startsWith('file://') ? uri.slice(7) : null;
+
+      if ((entry.lang === 'typescript' || entry.lang === 'javascript') && ts && filename) {
+        const ext = entry.lang === 'typescript' ? 'ts' : 'js';
+        const help = getSignatureHelpWithTSLanguageService(entry.text, filename || `file.${ext}`, line, character);
+        respond(id, help || null);
+      } else {
+        respond(id, null);
+      }
+
     } else if (method === 'textDocument/completion') {
       const uri = params.textDocument.uri;
       const entry = cache.get(uri);
