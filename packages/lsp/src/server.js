@@ -37,7 +37,7 @@ function _getOrCreateLS(text, filename) {
 }
 
 const PORT = parseInt(process.env.SYNAPSEIQ_LSP_PORT || '2087', 10);
-const VERSION = '0.6.0';
+const VERSION = '0.7.0';
 
 const SUPPORTED_LANGUAGES = [
   'python', 'typescript', 'javascript', 'lua', 'rust', 'go',
@@ -484,11 +484,49 @@ except SyntaxError as e:
 // Shared TS language-service host — accepts a single in-memory file.
 // All TS features (hover, definition, signatureHelp) use this.
 function _makeTSHost(text, filename) {
+  const fileMap = new Map([[filename || '/__virtual__.ts', text]]);
+
+  // W2-C: Multi-file support — discover tsconfig.json and include project files
+  if (filename && ts) {
+    try {
+      const path = require('node:path');
+      const fs = require('node:fs');
+      // Walk up from file's directory to find tsconfig.json
+      let dir = path.dirname(filename);
+      let tsconfig = null;
+      for (let i = 0; i < 8 && dir !== path.dirname(dir); i++) {
+        const candidate = path.join(dir, 'tsconfig.json');
+        if (fs.existsSync(candidate)) { tsconfig = candidate; break; }
+        dir = path.dirname(dir);
+      }
+      if (tsconfig) {
+        const projectRoot = path.dirname(tsconfig);
+        // Add up to 60 project TS/JS files (avoid huge projects)
+        const scanDir = (d, depth) => {
+          if (depth > 4) return;
+          try {
+            for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
+              if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === 'dist' || entry.name === 'build') continue;
+              const full = path.join(d, entry.name);
+              if (entry.isDirectory()) { scanDir(full, depth + 1); }
+              else if (/\.(ts|tsx|js|jsx)$/.test(entry.name) && full !== filename && fileMap.size < 60) {
+                try { fileMap.set(full, fs.readFileSync(full, 'utf8')); } catch (_) {}
+              }
+            }
+          } catch (_) {}
+        };
+        scanDir(projectRoot, 0);
+      }
+    } catch (_) {}
+  }
+
   return {
-    getScriptFileNames:     () => [filename],
+    getScriptFileNames:     () => Array.from(fileMap.keys()),
     getScriptVersion:       () => '1',
-    getScriptSnapshot:      (name) =>
-      name === filename ? ts.ScriptSnapshot.fromString(text) : undefined,
+    getScriptSnapshot:      (name) => {
+      const src = fileMap.get(name);
+      return src !== undefined ? ts.ScriptSnapshot.fromString(src) : undefined;
+    },
     getCurrentDirectory:    () => '/',
     getCompilationSettings: () => ({
       noEmit: true, strict: false, allowJs: true,
@@ -496,8 +534,8 @@ function _makeTSHost(text, filename) {
       noResolve: true, noLib: true, skipLibCheck: true,
     }),
     getDefaultLibFileName:  () => '',
-    fileExists:             (name) => name === filename,
-    readFile:               (name) => name === filename ? text : undefined,
+    fileExists:             (name) => fileMap.has(name),
+    readFile:               (name) => fileMap.get(name),
     directoryExists:        () => true,
     getDirectories:         () => [],
     useCaseSensitiveFileNames: () => false,
@@ -766,20 +804,21 @@ const server = http.createServer(async (req, res) => {
       status: 'ok', service: 'synapseiq-lsp', version: VERSION, port: PORT,
       languages: SUPPORTED_LANGUAGES,
       capabilities: {
-        typescript_ast:        ts !== null,
-        babel_parser:          babelParser !== null,
-        python_ast:            true,
-        real_type_checking:    ts !== null,
-        typescript_hover:      ts !== null,
-        typescript_definition: ts !== null,
-        typescript_signature:  ts !== null,
-        typescript_references: ts !== null,
-        typescript_formatting: true,
+        typescript_ast:         ts !== null,
+        babel_parser:           babelParser !== null,
+        python_ast:             true,
+        real_type_checking:     ts !== null,
+        typescript_hover:       ts !== null,
+        typescript_definition:  ts !== null,
+        typescript_signature:   ts !== null,
+        typescript_references:  ts !== null,
+        typescript_formatting:  true,
         typescript_inlay_hints: ts !== null,
-        rust_diagnostics:      true,
-        go_diagnostics:        true,
-        lua_diagnostics:       true,
-        shell_diagnostics:     true,
+        typescript_multi_file:  ts !== null,
+        rust_diagnostics:       true,
+        go_diagnostics:         true,
+        lua_diagnostics:        true,
+        shell_diagnostics:      true,
       },
     });
   }
