@@ -330,3 +330,126 @@ server.listen(PORT, '127.0.0.1', () => {
 
 process.on('SIGTERM', () => { server.close(); process.exit(0); });
 process.on('SIGINT', () => { server.close(); process.exit(0); });
+
+// ============================================================
+// LSP stdio transport (--lsp flag)
+// ============================================================
+
+if (process.argv.includes('--lsp')) {
+  // Switch to LSP mode: disable HTTP server, start JSON-RPC over stdio
+  server.close();
+  runLspServer();
+}
+
+function runLspServer() {
+  const fileCache = new Map();  // uri → { text, lang }
+  let buffer = Buffer.alloc(0);
+
+  process.stdin.on('data', chunk => {
+    buffer = Buffer.concat([buffer, chunk]);
+    processBuffer();
+  });
+
+  function processBuffer() {
+    while (true) {
+      const headerEnd = buffer.indexOf('\r\n\r\n');
+      if (headerEnd === -1) return;
+      const headers = buffer.slice(0, headerEnd).toString('utf8');
+      const lenMatch = headers.match(/Content-Length:\s*(\d+)/i);
+      if (!lenMatch) { buffer = buffer.slice(headerEnd + 4); continue; }
+      const len = parseInt(lenMatch[1], 10);
+      if (buffer.length < headerEnd + 4 + len) return;
+      const body = buffer.slice(headerEnd + 4, headerEnd + 4 + len).toString('utf8');
+      buffer = buffer.slice(headerEnd + 4 + len);
+      try { handleMessage(JSON.parse(body), fileCache); } catch (_) {}
+    }
+  }
+
+  function sendMessage(msg) {
+    const body = JSON.stringify(msg);
+    process.stdout.write(`Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`);
+  }
+
+  function respond(id, result) {
+    sendMessage({ jsonrpc: '2.0', id, result });
+  }
+
+  function notify(method, params) {
+    sendMessage({ jsonrpc: '2.0', method, params });
+  }
+
+  function pushDiagnostics(uri, text, lang) {
+    const diags = extractDiagnostics(text, lang, null);
+    const sevMap = { error: 1, warning: 2, info: 3, hint: 4 };
+    notify('textDocument/publishDiagnostics', {
+      uri,
+      diagnostics: diags.map(d => ({
+        range: {
+          start: { line: d.line || 0, character: d.col || 0 },
+          end: { line: d.end_line || d.line || 0, character: d.end_col || (d.col || 0) + 1 },
+        },
+        severity: sevMap[d.severity] || 2,
+        message: d.message,
+        source: 'synapseiq-lsp',
+      })),
+    });
+  }
+
+  function handleMessage(msg, cache) {
+    const { id, method, params } = msg;
+
+    if (method === 'initialize') {
+      respond(id, {
+        capabilities: {
+          textDocumentSync: 1,
+          hoverProvider: true,
+          completionProvider: { triggerCharacters: ['.', '/', ':'] },
+        },
+        serverInfo: { name: 'synapseiq-lsp', version: VERSION },
+      });
+    } else if (method === 'initialized') {
+      // no-op notification
+    } else if (method === 'textDocument/didOpen') {
+      const { uri, languageId, text } = params.textDocument;
+      const lang = languageId || detectLanguage(uri.replace('file://', ''));
+      cache.set(uri, { text, lang });
+      pushDiagnostics(uri, text, lang);
+    } else if (method === 'textDocument/didChange') {
+      const uri = params.textDocument.uri;
+      const text = (params.contentChanges[0] || {}).text || '';
+      const entry = cache.get(uri) || { lang: detectLanguage(uri.replace('file://', '')) };
+      entry.text = text;
+      cache.set(uri, entry);
+      pushDiagnostics(uri, text, entry.lang);
+    } else if (method === 'textDocument/didClose') {
+      cache.delete(params.textDocument.uri);
+    } else if (method === 'textDocument/hover') {
+      const uri = params.textDocument.uri;
+      const entry = cache.get(uri);
+      if (!entry || id === undefined) { if (id !== undefined) respond(id, null); return; }
+      const { line, character } = params.position;
+      const hover = getHover(entry.text, entry.lang, line, character);
+      respond(id, hover ? { contents: { kind: 'markdown', value: hover.contents } } : null);
+    } else if (method === 'textDocument/completion') {
+      const uri = params.textDocument.uri;
+      const entry = cache.get(uri);
+      if (!entry || id === undefined) { if (id !== undefined) respond(id, { isIncomplete: false, items: [] }); return; }
+      const kindMap = { function: 3, class: 7, variable: 6, interface: 8, type: 25, struct: 22, enum: 13, trait: 8 };
+      const items = extractSymbols(entry.text, entry.lang).map(s => ({
+        label: s.name,
+        kind: kindMap[s.kind] || 6,
+        detail: `${s.kind} (line ${s.line + 1})`,
+        insertText: s.name,
+      }));
+      respond(id, { isIncomplete: false, items });
+    } else if (method === 'shutdown') {
+      if (id !== undefined) respond(id, null);
+    } else if (method === 'exit') {
+      process.exit(0);
+    } else if (id !== undefined) {
+      sendMessage({ jsonrpc: '2.0', id, error: { code: -32601, message: 'Method not found' } });
+    }
+  }
+
+  process.stderr.write(`[synapseiq-lsp] v${VERSION} stdio LSP mode\n`);
+}
