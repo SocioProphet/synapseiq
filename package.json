@@ -10,8 +10,13 @@
     "build": "pnpm -r build",
     "clean": "pnpm -r clean",
     "lint": "pnpm -r lint",
-    "test": "pnpm -r test",
+    "test": "tsx test/scopeDReasoningPacket.test.ts",
+    "test:scope-d-reasoning": "tsx test/scopeDReasoningPacket.test.ts",
     "typecheck": "pnpm -r typecheck",
     "verify": "pnpm lint && pnpm typecheck && pnpm test"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
   }
 }
