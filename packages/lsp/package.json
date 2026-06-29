@@ -8,5 +8,11 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js"
   },
-  "engines": { "node": ">=20" }
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@babel/parser": "8.0.0",
+    "typescript": "6.0.3"
+  }
 }
