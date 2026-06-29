@@ -10,4 +10,7 @@ export * from "./governance.js";
 export * from "./equality.js";
 export * from "./numeric.js";
 export * from "./iri.js";
+export * from "./gci.js";
+export * from "./tci.js";
+export * from "./audit-harness.js";
 export * from "./proof-pack.js";
