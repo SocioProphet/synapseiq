@@ -8,6 +8,15 @@
 const http = require('node:http');
 const { spawnSync } = require('node:child_process');
 
+// Escape every regex metacharacter in user-supplied text before embedding it in
+// a `new RegExp(...)`. Prevents js/regex-injection (an attacker-controlled rename
+// symbol otherwise injects `.*`, `(`, etc. → match-corruption / ReDoS) and is the
+// COMPLETE sanitizer for js/incomplete-sanitization (the prior `.replace(/[$]/g,…)`
+// escaped only `$`).
+function escapeRegExp(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // Optional parsers — loaded once, used everywhere
 let ts = null;
 let babelParser = null;
@@ -428,7 +437,11 @@ except SyntaxError as e:
     const os = require('node:os');
     const fs = require('node:fs');
     const path = require('node:path');
-    const tmpFile = path.join(os.tmpdir(), `synapseiq-lua-${Date.now()}.lua`);
+    // Create the scratch file inside an unpredictable, private (0700) temp dir.
+    // A fixed/timestamped name in the world-writable tmpdir is a symlink/race
+    // target (js/insecure-temporary-file); mkdtempSync gives an unguessable dir.
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'synapseiq-lua-'));
+    const tmpFile = path.join(tmpDir, 'src.lua');
     try {
       fs.writeFileSync(tmpFile, text, 'utf8');
       const res = spawnSync('luac', ['-p', tmpFile], { encoding: 'utf8', timeout: 5000 });
@@ -441,7 +454,7 @@ except SyntaxError as e:
         diags.push({ line, col: 0, end_line: line, end_col: 1, severity: 'error', message: m[2], source: 'synapseiq-lsp/luac' });
       }
     } finally {
-      try { require('node:fs').unlinkSync(tmpFile); } catch (_) {}
+      try { require('node:fs').rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
     }
     return diags;
   }
@@ -716,14 +729,17 @@ function formatDocument(text, language, filename) {
 
   const tryFmtFile = (cmd, args) => {
     const os = require('node:os'), fs = require('node:fs'), path = require('node:path');
-    const tmp = path.join(os.tmpdir(), `synapseiq-fmt-${Date.now()}.${ext}`);
+    // Private (0700), unguessable temp dir — not a timestamped name in the
+    // shared tmpdir (js/insecure-temporary-file).
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'synapseiq-fmt-'));
+    const tmp = path.join(tmpDir, `src.${ext}`);
     try {
       fs.writeFileSync(tmp, text, 'utf8');
       const r = spawnSync(cmd, [...args, tmp], { encoding: 'utf8', timeout: 10000 });
       const out = r.status === 0 ? fs.readFileSync(tmp, 'utf8') : null;
       return (out && out !== text) ? out : null;
     } catch (_) { return null; } finally {
-      try { require('node:fs').unlinkSync(tmp); } catch (_) {}
+      try { require('node:fs').rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
     }
   };
 
@@ -788,7 +804,7 @@ function getCodeActions(text, filename, range, diagnostics) {
           title: `Remove unused variable '${varMatch[1]}'`,
           kind: 'quickfix',
           diagnostics: [diag],
-          edit: { changes: { [filename]: [{ range: diag.range, newText: '' }] } },
+          edit: { changes: Object.fromEntries([[filename, [{ range: diag.range, newText: '' }]]]) },
         });
       }
     }
@@ -808,7 +824,7 @@ function getCodeActions(text, filename, range, diagnostics) {
         title: 'Add missing semicolon',
         kind: 'quickfix',
         diagnostics: [diag],
-        edit: { changes: { [filename]: [{ range: { start: diag.range?.end, end: diag.range?.end }, newText: ';' }] } },
+        edit: { changes: Object.fromEntries([[filename, [{ range: { start: diag.range?.end, end: diag.range?.end }, newText: ';' }]]]) },
       });
     }
   }
@@ -844,7 +860,7 @@ function getCodeActions(text, filename, range, diagnostics) {
 
 function getWorkspaceSymbols(query, projectRoot) {
   const symbols = [];
-  const { readdirSync, statSync, readFileSync } = require('fs');
+  const { readdirSync, readFileSync } = require('fs');
   const path = require('node:path');
   const MAX_FILES = 40;
   let fileCount = 0;
@@ -852,15 +868,18 @@ function getWorkspaceSymbols(query, projectRoot) {
   function walk(dir, depth) {
     if (depth > 4 || fileCount >= MAX_FILES) return;
     let entries;
-    try { entries = readdirSync(dir); } catch { return; }
-    for (const name of entries) {
+    // Take the file type from the readdir Dirent, not a separate statSync — a
+    // stat-then-read on the same path is a TOCTOU (js/file-system-race), and
+    // isFile() also skips symlinks so the walk can't be redirected to an
+    // arbitrary target.
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      const name = entry.name;
       if (name.startsWith('.') || name === 'node_modules' || name === 'dist' || name === 'build') continue;
       const full = path.join(dir, name);
-      let stat;
-      try { stat = statSync(full); } catch { continue; }
-      if (stat.isDirectory()) {
+      if (entry.isDirectory()) {
         walk(full, depth + 1);
-      } else if (/\.(ts|tsx|js|jsx|py|go|rs)$/.test(name) && fileCount < MAX_FILES) {
+      } else if (entry.isFile() && /\.(ts|tsx|js|jsx|py|go|rs)$/.test(name) && fileCount < MAX_FILES) {
         fileCount++;
         let src;
         try { src = readFileSync(full, 'utf8'); } catch { continue; }
@@ -1061,7 +1080,9 @@ const server = http.createServer(async (req, res) => {
 
   if (req.url === '/lsp/workspace-diagnostics' && req.method === 'POST') {
     const { files: wdFiles, cwd: wdCwd } = body;
-    const results = {};
+    // Map keyed by the user-controlled file path, materialized via Object.fromEntries
+    // at the boundary — a plain object with `results[fname] = …` is js/remote-property-injection.
+    const results = new Map();
     const filesToCheck = wdFiles && wdFiles.length > 0 ? [...wdFiles] : [];
     if (filesToCheck.length === 0 && wdCwd) {
       const { spawnSync: sp } = require('child_process');
@@ -1078,10 +1099,10 @@ const server = http.createServer(async (req, res) => {
         const src = readFileSync(fname, 'utf8');
         const lang = detectLanguage(fname);
         const diags = extractDiagnostics(src, lang, fname);
-        if (diags.length > 0) results[fname] = diags;
+        if (diags.length > 0) results.set(fname, diags);
       } catch { /* skip unreadable */ }
     }
-    return send(res, 200, { diagnostics: results, files_checked: filesToCheck.length });
+    return send(res, 200, { diagnostics: Object.fromEntries(results), files_checked: filesToCheck.length });
   }
 
   if (req.url === '/lsp/rename' && req.method === 'POST') {
@@ -1096,7 +1117,7 @@ const server = http.createServer(async (req, res) => {
     const oldName = wb + wa;
     if (!oldName) return send(res, 200, { changes: {} });
     const edits = [];
-    const re = new RegExp(`\\b${oldName.replace(/[$]/g, '\\$')}\\b`, 'g');
+    const re = new RegExp(`\\b${escapeRegExp(oldName)}\\b`, 'g');
     renLines.forEach((ln, i) => {
       let m;
       while ((m = re.exec(ln)) !== null) {
@@ -1482,7 +1503,7 @@ function runLspServer() {
         if (!rnOld) { respond(id, null); }
         else {
           const rnEdits = [];
-          const rnRe = new RegExp(`\\b${rnOld.replace(/[$]/g, '\\$')}\\b`, 'g');
+          const rnRe = new RegExp(`\\b${escapeRegExp(rnOld)}\\b`, 'g');
           for (let i = 0; i < rnLines.length; i++) {
             let rnM;
             while ((rnM = rnRe.exec(rnLines[i])) !== null) {
