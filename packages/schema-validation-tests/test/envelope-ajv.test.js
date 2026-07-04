@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import Ajv from 'ajv';
+// The envelope schema declares JSON Schema draft 2020-12, so use Ajv's 2020
+// dialect build — the default `ajv` export only knows draft-07 and throws
+// "no schema with key or ref .../draft/2020-12/schema" on compile.
+import Ajv from 'ajv/dist/2020.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

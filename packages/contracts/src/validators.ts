@@ -46,7 +46,7 @@ export function validateCanonicalEnvelope(
   }
 
   if (doc.source && typeof doc.source === "object") {
-    const src = doc.source as Record<string, unknown>;
+    const src = doc.source as unknown as Record<string, unknown>;
     if (!src.source_id) {
       issues.push({ path: "source.source_id", message: "Missing source_id" });
     }
@@ -56,7 +56,7 @@ export function validateCanonicalEnvelope(
   }
 
   if (doc.provenance && typeof doc.provenance === "object") {
-    const prov = doc.provenance as Record<string, unknown>;
+    const prov = doc.provenance as unknown as Record<string, unknown>;
     for (const key of ["ingested_at", "processed_at", "processor", "method"]) {
       if (!(key in prov)) {
         issues.push({ path: `provenance.${key}`, message: `Missing provenance field: ${key}` });
