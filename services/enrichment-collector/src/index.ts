@@ -1,4 +1,4 @@
-import type { CanonicalEnvelope, SourceRecord, SynapseIQAdapter, AdapterContext } from "../../../packages/contracts/src";
+import type { CanonicalEnvelope, SourceRecord, SynapseIQAdapter, AdapterContext } from "@socioprophet/synapseiq-contracts";
 
 export interface CollectorDependencies {
   adapter: SynapseIQAdapter;

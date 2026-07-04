@@ -10,12 +10,12 @@ function id() {
   return `rec_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function sendJson(res, status, body) {
+function sendJson(res: http.ServerResponse, status: number, body: unknown) {
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(body));
 }
 
-function buildEnvelope(payload) {
+function buildEnvelope(payload: Record<string, unknown>) {
   const candidates = Array.isArray(payload.glossary_candidates) ? payload.glossary_candidates : [];
   return {
     envelope_version: '1.0.0',

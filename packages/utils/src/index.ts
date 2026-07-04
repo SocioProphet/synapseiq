@@ -3,7 +3,9 @@ export function isoNow(): string {
 }
 
 export function generateRecordId(): string {
-  const cryptoLike = globalThis.crypto as Crypto | undefined;
+  // Avoid the DOM `Crypto` type (base tsconfig lib is ES2022, no DOM) and the
+  // implicit-any index on globalThis — reference only the one method we use.
+  const cryptoLike = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
   if (cryptoLike?.randomUUID) {
     return cryptoLike.randomUUID();
   }
