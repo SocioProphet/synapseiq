@@ -24,3 +24,5 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Typecheck
         run: pnpm typecheck
+      - name: Vendored scorer copies match canonical source
+        run: node tools/check_vendored_scorer_copies.mjs

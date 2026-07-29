@@ -1,6 +1,6 @@
 FROM node:20-slim
 WORKDIR /app
-COPY server.js ./server.js
+COPY server.mjs ./server.mjs
 ENV PORT=8080
 EXPOSE 8080
-CMD ["node", "server.js"]
+CMD ["node", "server.mjs"]
