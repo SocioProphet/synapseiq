@@ -3,6 +3,10 @@ import assert from "node:assert/strict";
 import {
   ABBREVIATIONS,
   MIN_SCORE,
+  PRECISION_WEIGHT,
+  RECALL_WEIGHT,
+  TIE_FLOOR,
+  TIE_MARGIN_SATURATION,
   expandColumnName,
   mapColumnToGlossary,
   scoreCandidate,
@@ -100,4 +104,30 @@ test("abbreviation table has no identity entries", () => {
   for (const [short, long] of Object.entries(ABBREVIATIONS)) {
     assert.notEqual(short, long, `${short} expands to itself`);
   }
+});
+
+test("camelCase glossary labels tokenize like spaced ones", () => {
+  const spaced = scoreCandidate("planned end date", "Planned End Date").score;
+  const camel = scoreCandidate("planned end date", "PlannedEndDate").score;
+  assert.equal(camel, spaced, "a camelCase label must not collapse to one token");
+  assert.ok(camel > 0);
+});
+
+test("ordering does not depend on host locale collation", () => {
+  // Codepoint ordering, not localeCompare: ICU data varies by environment.
+  const r = mapColumnToGlossary("END_DT", ["b End Date", "B End Date", "a End Date"]);
+  const tied = r.ranked.filter((x) => x.score === r.ranked[0]!.score).map((x) => x.candidate);
+  assert.deepEqual(tied, [...tied].sort());
+});
+
+test("tie-discount constants are exported and bound the confidence", () => {
+  assert.ok(TIE_FLOOR > 0 && TIE_FLOOR < 1);
+  assert.ok(TIE_MARGIN_SATURATION > 0);
+  assert.equal(Number((RECALL_WEIGHT + PRECISION_WEIGHT).toFixed(6)), 1);
+  // Scores and confidences are rounded to 4dp, so compare at that resolution:
+  // an exact bound of 0.55002 legitimately reports as 0.55.
+  const tie = mapColumnToGlossary("END_DT", ["Contract End Date", "Coverage End Date"]);
+  const ROUNDING = 5e-5;
+  assert.ok(tie.confidence >= tie.ranked[0]!.score * TIE_FLOOR - ROUNDING);
+  assert.ok(tie.confidence <= tie.ranked[0]!.score + ROUNDING);
 });

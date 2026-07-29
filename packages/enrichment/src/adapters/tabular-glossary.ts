@@ -54,8 +54,11 @@ export class TabularGlossaryAdapter extends BaseAdapter {
     // with a hardcoded confidence of 0.5 — the caller did the mapping and the
     // number meant nothing. Scoring abstains rather than force-matching, so an
     // unmapped column is reported as unmapped instead of as the least-bad guess.
+    // Filter to real strings rather than String()-coercing: null/undefined would
+    // become the literal "null"/"undefined" and objects "[object Object]",
+    // polluting both the ranking and the evidence it reports.
     const candidates = Array.isArray(payload.glossary_candidates)
-      ? payload.glossary_candidates.map(String)
+      ? payload.glossary_candidates.filter((c): c is string => typeof c === "string" && c.trim().length > 0)
       : [];
     const mapping = mapColumnToGlossary(String(payload.column_name), candidates);
 

@@ -49,6 +49,18 @@ const STOPWORDS: ReadonlySet<string> = new Set([
 /** Below this score the column is reported UNMAPPED rather than force-matched. */
 export const MIN_SCORE = 0.34;
 
+/** Scoring weights. Recall against the column's own tokens outranks precision
+ *  against the label — see scoreCandidate() for why. */
+export const RECALL_WEIGHT = 0.75;
+export const PRECISION_WEIGHT = 0.25;
+
+/** Near-tie discounting. A winner is scaled between TIE_FLOOR and 1 according to
+ *  how far clear of the runner-up it is, saturating at TIE_MARGIN_SATURATION.
+ *  Named rather than embedded: constants that move confidence must be as visible
+ *  and as tunable as MIN_SCORE. */
+export const TIE_FLOOR = 0.6;
+export const TIE_MARGIN_SATURATION = 0.2;
+
 export type EvidenceType = "LEXICAL" | "EMBEDDING";
 
 export interface ScoredCandidate {
@@ -71,7 +83,11 @@ export interface ColumnMappingResult {
   unmappedReason?: string;
 }
 
-/** Split a column name on underscores, hyphens, spaces, and camelCase humps. */
+/** Split on underscores, hyphens, spaces, and camelCase humps.
+ *
+ *  Used for BOTH column names and glossary labels. Splitting only one side would
+ *  make a label written `PlannedEndDate` collapse to a single token and score
+ *  zero overlap against `planned end date` — the right answer, unmatchable. */
 export function tokenizeColumn(columnName: string): string[] {
   return columnName
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
@@ -95,11 +111,9 @@ export function expandColumnName(columnName: string): { expanded: string; expans
 }
 
 function contentTokens(phrase: string): string[] {
-  return phrase
-    .split(/[^A-Za-z0-9]+/)
-    .filter((t) => t.length > 0)
-    .map((t) => t.toLowerCase())
-    .filter((t) => !STOPWORDS.has(t));
+  // Same tokenizer as the column side: camelCase-aware, so `PlannedEndDate` and
+  // `Planned End Date` reduce to the same tokens.
+  return tokenizeColumn(phrase).filter((t) => !STOPWORDS.has(t));
 }
 
 /**
@@ -112,19 +126,23 @@ function contentTokens(phrase: string): string[] {
  * above the wordy right one.
  */
 export function scoreCandidate(expandedColumn: string, candidate: string): { score: number; matchedTokens: string[] } {
-  const columnTokens = contentTokens(expandedColumn);
-  const candidateTokens = contentTokens(candidate);
-  if (columnTokens.length === 0 || candidateTokens.length === 0) {
+  return scoreAgainstTokens(new Set(contentTokens(expandedColumn)), candidate);
+}
+
+/** Scoring core over a pre-computed column token set, so mapColumnToGlossary()
+ *  does the column-side work once rather than per candidate. */
+function scoreAgainstTokens(columnTokens: ReadonlySet<string>, candidate: string): { score: number; matchedTokens: string[] } {
+  const candidateSet = new Set(contentTokens(candidate));
+  if (columnTokens.size === 0 || candidateSet.size === 0) {
     return { score: 0, matchedTokens: [] };
   }
 
-  const candidateSet = new Set(candidateTokens);
-  const matchedTokens = [...new Set(columnTokens.filter((t) => candidateSet.has(t)))];
+  const matchedTokens = [...columnTokens].filter((t) => candidateSet.has(t));
   if (matchedTokens.length === 0) return { score: 0, matchedTokens: [] };
 
-  const recall = matchedTokens.length / new Set(columnTokens).size;
+  const recall = matchedTokens.length / columnTokens.size;
   const precision = matchedTokens.length / candidateSet.size;
-  const score = 0.75 * recall + 0.25 * precision;
+  const score = RECALL_WEIGHT * recall + PRECISION_WEIGHT * precision;
 
   return { score: Math.min(1, Number(score.toFixed(4))), matchedTokens };
 }
@@ -133,12 +151,16 @@ export function scoreCandidate(expandedColumn: string, candidate: string): { sco
 export function mapColumnToGlossary(columnName: string, candidates: readonly string[]): ColumnMappingResult {
   const { expanded, expansionsApplied } = expandColumnName(columnName);
 
+  const columnTokens = new Set(contentTokens(expanded));
   const ranked: ScoredCandidate[] = candidates
     .map((candidate) => {
-      const { score, matchedTokens } = scoreCandidate(expanded, candidate);
+      const { score, matchedTokens } = scoreAgainstTokens(columnTokens, candidate);
       return { candidate, score, matchedTokens, evidenceType: "LEXICAL" as const };
     })
-    .sort((a, b) => (b.score - a.score) || a.candidate.localeCompare(b.candidate));
+    // Plain codepoint comparison, NOT localeCompare: collation varies with the
+    // host's ICU data, which would make ranking environment-dependent and break
+    // the determinism this module promises.
+    .sort((a, b) => (b.score - a.score) || (a.candidate < b.candidate ? -1 : a.candidate > b.candidate ? 1 : 0));
 
   if (ranked.length === 0) {
     return {
@@ -160,7 +182,9 @@ export function mapColumnToGlossary(columnName: string, candidates: readonly str
   // how close the runner-up came, so an ambiguous mapping cannot present as sure.
   const runnerUp = ranked[1];
   const margin = runnerUp ? best.score - runnerUp.score : best.score;
-  const confidence = Number(Math.min(1, best.score * (0.6 + 0.4 * Math.min(1, margin / 0.2))).toFixed(4));
+  const confidence = Number(
+    Math.min(1, best.score * (TIE_FLOOR + (1 - TIE_FLOOR) * Math.min(1, margin / TIE_MARGIN_SATURATION))).toFixed(4),
+  );
 
   return { target: best.candidate, confidence, ranked, expandedColumn: expanded, expansionsApplied };
 }
