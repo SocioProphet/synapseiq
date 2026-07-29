@@ -21,6 +21,45 @@ function sendJson(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
+// Completeness-based confidence.
+//
+// The old envelopes stamped confidence: { overall: 0.5 } on every result — a
+// constant wearing a number's clothes, exactly the pattern removed from the
+// tabular-glossary adapter. There is no ranking here, but there IS evidence:
+// how many of the anchors that identify this shape actually arrived in the
+// payload. Confidence is that ratio. Zero anchors is 0.0 with an explicit
+// unmapped reason, not a comforting 0.5.
+//
+// EVIDENCE_ANCHORS name the payload fields that make each shape identifiable.
+// Kept small and explicit — an anchor list nobody can read is one nobody can
+// audit. Weights are equal on purpose: we have not measured which anchor
+// discriminates better, and pretending we have would be another comforting
+// number.
+const EVIDENCE_ANCHORS = {
+  event: ['page_url', 'company_domain', 'timestamp', 'ip', 'user_agent'],
+  organization: ['company_domain', 'company_name', 'company_industry', 'employee_count'],
+  person: ['person_name', 'person_email', 'person_title', 'person_linkedin'],
+};
+
+function completenessConfidence(payload, kind) {
+  const anchors = EVIDENCE_ANCHORS[kind] || [];
+  const present = anchors.filter((a) => {
+    const v = payload[a];
+    return v !== null && v !== undefined && String(v).trim().length > 0;
+  });
+  const overall = anchors.length === 0 ? 0 : Number((present.length / anchors.length).toFixed(4));
+  return {
+    overall,
+    evidence_type: 'COMPLETENESS',
+    anchors_expected: anchors,
+    anchors_present: present,
+    ...(present.length === 0
+      ? { unmapped_reason: 'no identifying anchors for ' + kind + ' present in payload' }
+      : {}),
+  };
+}
+
+
 function buildEventEnvelope(payload, requestId) {
   return {
     envelope_version: '1.0.0',
@@ -35,7 +74,7 @@ function buildEventEnvelope(payload, requestId) {
       processor: 'zoominfo-alpha-runtime',
       method: 'rule'
     },
-    confidence: { overall: 0.5 },
+    confidence: completenessConfidence(payload, 'event'),
     canonical: {
       event_type: 'zoominfo_identity_touch',
       attributes: {
@@ -62,7 +101,7 @@ function buildOrgEnvelope(payload, requestId) {
       processor: 'zoominfo-alpha-runtime',
       method: 'rule'
     },
-    confidence: { overall: 0.5 },
+    confidence: completenessConfidence(payload, 'organization'),
     canonical: {
       entity_type: 'organization',
       display_name: payload.company_name,
@@ -90,7 +129,7 @@ function buildPersonEnvelope(payload, requestId) {
       processor: 'zoominfo-alpha-runtime',
       method: 'rule'
     },
-    confidence: { overall: 0.5 },
+    confidence: completenessConfidence(payload, 'person'),
     canonical: {
       entity_type: 'person',
       display_name: payload.person_name,
