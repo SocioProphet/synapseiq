@@ -1,4 +1,4 @@
-// Smoke tests for the ZoomInfo runtime's completeness-based confidence.
+// Smoke tests for the Identity-Firmographic runtime's completeness-based confidence.
 //
 // The old envelopes stamped `confidence: { overall: 0.5 }` on every result.
 // New confidence is derived from how many identifying anchors actually
@@ -32,7 +32,7 @@ const block = src.slice(startIdx, endIdx);
 // Use mkdtempSync to get a private, unpredictable directory rather than a
 // predictable filename in a shared /tmp — a symlink pre-created by another
 // process could otherwise redirect the write. CodeQL flagged this class.
-const shimDir = mkdtempSync(join(tmpdir(), "zoominfo-helpers-"));
+const shimDir = mkdtempSync(join(tmpdir(), "identity-firmographic-helpers-"));
 const shimPath = join(shimDir, "helpers.cjs");
 writeFileSync(shimPath, `
 const id = () => 'rec_test';

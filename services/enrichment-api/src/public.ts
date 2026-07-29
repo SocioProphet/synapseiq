@@ -1,3 +1,3 @@
 export { ingest } from './index';
-export { ingestZoomInfo } from './ingest-zoominfo';
+export { ingestIdentity-Firmographic } from './ingest-identity-firmographic';
 export { ingestTabular } from './ingest-tabular';

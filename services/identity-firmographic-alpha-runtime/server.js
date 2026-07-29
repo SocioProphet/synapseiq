@@ -79,23 +79,23 @@ function buildEventEnvelope(payload, requestId) {
     record_stage: 'normalized',
     record_id: id(),
     record_ts: now(),
-    source: { source_id: 'zoominfo', source_type: 'sync_api' },
+    source: { source_id: 'identity-firmographic', source_type: 'sync_api' },
     provenance: {
       ingested_at: now(),
       processed_at: now(),
-      processor: 'zoominfo-alpha-runtime',
+      processor: 'identity-firmographic-alpha-runtime',
       method: 'rule'
     },
     confidence: completenessConfidence(payload, 'event'),
     canonical: {
-      event_type: 'zoominfo_identity_touch',
+      event_type: 'identity_firmographic_identity_touch',
       attributes: {
         page_url: payload.page_url || null,
         company_domain: payload.company_domain || null
       }
     },
     source_native: payload,
-    explanations: [{ kind: 'rule', message: 'Normalized ZoomInfo-style payload into event envelope', request_id: requestId }]
+    explanations: [{ kind: 'rule', message: 'Normalized Identity-Firmographic-style payload into event envelope', request_id: requestId }]
   };
 }
 
@@ -106,11 +106,11 @@ function buildOrgEnvelope(payload, requestId) {
     record_stage: 'normalized',
     record_id: id(),
     record_ts: now(),
-    source: { source_id: 'zoominfo', source_type: 'sync_api' },
+    source: { source_id: 'identity-firmographic', source_type: 'sync_api' },
     provenance: {
       ingested_at: now(),
       processed_at: now(),
-      processor: 'zoominfo-alpha-runtime',
+      processor: 'identity-firmographic-alpha-runtime',
       method: 'rule'
     },
     confidence: completenessConfidence(payload, 'organization'),
@@ -123,7 +123,7 @@ function buildOrgEnvelope(payload, requestId) {
       }
     },
     source_native: payload,
-    explanations: [{ kind: 'rule', message: 'Extracted organization entity from ZoomInfo-style payload', request_id: requestId }]
+    explanations: [{ kind: 'rule', message: 'Extracted organization entity from Identity-Firmographic-style payload', request_id: requestId }]
   };
 }
 
@@ -134,11 +134,11 @@ function buildPersonEnvelope(payload, requestId) {
     record_stage: 'normalized',
     record_id: id(),
     record_ts: now(),
-    source: { source_id: 'zoominfo', source_type: 'sync_api' },
+    source: { source_id: 'identity-firmographic', source_type: 'sync_api' },
     provenance: {
       ingested_at: now(),
       processed_at: now(),
-      processor: 'zoominfo-alpha-runtime',
+      processor: 'identity-firmographic-alpha-runtime',
       method: 'rule'
     },
     confidence: completenessConfidence(payload, 'person'),
@@ -148,7 +148,7 @@ function buildPersonEnvelope(payload, requestId) {
       normalized_name: payload.person_name
     },
     source_native: payload,
-    explanations: [{ kind: 'rule', message: 'Extracted person entity from ZoomInfo-style payload', request_id: requestId }]
+    explanations: [{ kind: 'rule', message: 'Extracted person entity from Identity-Firmographic-style payload', request_id: requestId }]
   };
 }
 
@@ -157,7 +157,7 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && req.url === '/health') {
     log('info', 'health', { request_id: requestId });
-    return sendJson(res, 200, { ok: true, service: 'zoominfo-alpha-runtime' });
+    return sendJson(res, 200, { ok: true, service: 'identity-firmographic-alpha-runtime' });
   }
 
   if (req.method === 'GET' && req.url === '/ready') {
@@ -165,7 +165,7 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, { ready: true });
   }
 
-  if (req.method === 'POST' && req.url === '/ingest/zoominfo') {
+  if (req.method === 'POST' && req.url === '/ingest/identity-firmographic') {
     let raw = '';
     for await (const chunk of req) raw += chunk;
 

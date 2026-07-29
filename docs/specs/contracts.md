@@ -1,6 +1,6 @@
 # Event Schema Contracts and Vendor Integration
 
-This document defines the **event schema contracts** and outlines the integration process for different vendors, including **ZoomInfo**, **GDELT**, and other data sources.
+This document defines the **event schema contracts** and outlines the integration process for different vendors, including **Identity-Firmographic**, **GDELT**, and other data sources.
 
 ## Event Schema Contract
 
@@ -9,7 +9,7 @@ The core **event schema** is based on the **UDM (Universal Data Model)**, ensuri
 ### Required Fields:
 
 - `event_id`: A unique identifier for the event (UUID).
-- `provider`: The name of the data provider (e.g., `zoominfo`, `gdeltr`).
+- `provider`: The name of the data provider (e.g., `identity-firmographic`, `gdeltr`).
 - `observed_at`: The timestamp when the event occurred (ISO 8601).
 - `site_host`: The hostname of the website or source system.
 - `page_url`: The full URL of the page associated with the event.
@@ -25,7 +25,7 @@ The core **event schema** is based on the **UDM (Universal Data Model)**, ensuri
 ```json
 {
   "event_id": "uuid-v7",
-  "provider": "zoominfo",
+  "provider": "identity-firmographic",
   "observed_at": "2026-04-11T22:10:10.000Z",
   "site_host": "example.com",
   "page_url": "https://example.com/demo",
@@ -40,8 +40,8 @@ The core **event schema** is based on the **UDM (Universal Data Model)**, ensuri
 
 The framework supports the integration of multiple vendors through **adapters** that normalize and enrich the raw event data to fit the **UDM schema**.
 
-### ZoomInfo Integration
-The **ZoomInfo adapter** ingests data from the **ZoomInfo platform**, specifically **identity touch events**. The data is normalized to the **UDM schema** and enriched using the **FIBO ontology**.
+### Identity-Firmographic Integration
+The **Identity-Firmographic adapter** ingests data from the **Identity-Firmographic platform**, specifically **identity touch events**. The data is normalized to the **UDM schema** and enriched using the **FIBO ontology**.
 
 - **Adapter Features**: Normalizes `company_name`, `person_name`, and `event_metadata`.
 - **Enrichment**: Uses **FIBO** for financial data and **UCO** for cybersecurity data.
