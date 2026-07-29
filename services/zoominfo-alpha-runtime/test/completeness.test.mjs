@@ -13,7 +13,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
@@ -29,7 +29,11 @@ const endIdx = src.indexOf("const server = http.createServer");
 assert.ok(startIdx > 0 && endIdx > startIdx, "helpers block not found");
 const block = src.slice(startIdx, endIdx);
 
-const shimPath = join(tmpdir(), `zoominfo-helpers-${process.pid}.cjs`);
+// Use mkdtempSync to get a private, unpredictable directory rather than a
+// predictable filename in a shared /tmp — a symlink pre-created by another
+// process could otherwise redirect the write. CodeQL flagged this class.
+const shimDir = mkdtempSync(join(tmpdir(), "zoominfo-helpers-"));
+const shimPath = join(shimDir, "helpers.cjs");
 writeFileSync(shimPath, `
 const id = () => 'rec_test';
 const now = () => '2026-07-29T00:00:00Z';
