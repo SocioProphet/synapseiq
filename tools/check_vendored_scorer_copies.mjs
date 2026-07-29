@@ -19,38 +19,53 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const CANONICAL = join(ROOT, "services/_vendor/column-glossary-scoring.mjs");
-const COPIES = [
-  "services/tabular-alpha-api/column-glossary-scoring.mjs",
-  "services/tabular-alpha-runtime/column-glossary-scoring.mjs",
+// The scorer ships as an ESM runtime + a TS declaration sibling. Both must
+// stay byte-identical to their canonical sources in every service that vendors
+// them; a stale .d.mts would silently mistype the runtime.
+const PAIRS = [
+  {
+    canonical: "services/_vendor/column-glossary-scoring.mjs",
+    copies: [
+      "services/tabular-alpha-api/column-glossary-scoring.mjs",
+      "services/tabular-alpha-runtime/column-glossary-scoring.mjs",
+    ],
+  },
+  {
+    canonical: "services/_vendor/column-glossary-scoring.d.mts",
+    copies: [
+      "services/tabular-alpha-api/column-glossary-scoring.d.mts",
+      "services/tabular-alpha-runtime/column-glossary-scoring.d.mts",
+    ],
+  },
 ];
 
 const sha = (p) => createHash("sha256").update(readFileSync(p)).digest("hex");
 
-if (!existsSync(CANONICAL)) {
-  console.error(`ERR: canonical source missing: ${relative(ROOT, CANONICAL)}`);
-  process.exit(2);
-}
-
-const want = sha(CANONICAL);
-console.log(`canonical ${relative(ROOT, CANONICAL)} sha256:${want.slice(0, 16)}…`);
-
 let drift = 0;
 let missing = 0;
-for (const rel of COPIES) {
-  const abs = join(ROOT, rel);
-  if (!existsSync(abs)) {
-    console.error(`FAIL: expected vendored copy is missing: ${rel}`);
-    missing++;
-    continue;
+for (const { canonical, copies } of PAIRS) {
+  const canonAbs = join(ROOT, canonical);
+  if (!existsSync(canonAbs)) {
+    console.error(`ERR: canonical source missing: ${canonical}`);
+    process.exit(2);
   }
-  const got = sha(abs);
-  if (got === want) {
-    console.log(`ok: ${rel}`);
-  } else {
-    console.error(`FAIL: ${rel} has drifted from the canonical source`);
-    console.error(`      expected sha256:${want.slice(0, 16)}… got sha256:${got.slice(0, 16)}…`);
-    drift++;
+  const want = sha(canonAbs);
+  console.log(`canonical ${canonical} sha256:${want.slice(0, 16)}…`);
+  for (const rel of copies) {
+    const abs = join(ROOT, rel);
+    if (!existsSync(abs)) {
+      console.error(`FAIL: expected vendored copy is missing: ${rel}`);
+      missing++;
+      continue;
+    }
+    const got = sha(abs);
+    if (got === want) {
+      console.log(`  ok: ${rel}`);
+    } else {
+      console.error(`  FAIL: ${rel} has drifted from the canonical source`);
+      console.error(`        expected sha256:${want.slice(0, 16)}… got sha256:${got.slice(0, 16)}…`);
+      drift++;
+    }
   }
 }
 
