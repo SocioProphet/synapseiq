@@ -1,5 +1,11 @@
 /**
- * CANONICAL SOURCE for the vendored column-to-glossary scorer.
+ * Column-to-glossary scorer, vendored across the tabular-alpha services.
+ *
+ * Canonical source: services/_vendor/column-glossary-scoring.mjs.
+ * Vendored copies: services/tabular-alpha-{api,runtime}/column-glossary-scoring.mjs,
+ * kept byte-identical to the canonical file. If you are reading this in a
+ * service directory, treat this file as read-only and edit the canonical one;
+ * `tools/check_vendored_scorer_copies.mjs` enforces the identity in CI.
  *
  * Why vendored rather than imported. The tabular-alpha services are
  * deliberately standalone: `services/tabular-alpha-runtime/README.md` states it

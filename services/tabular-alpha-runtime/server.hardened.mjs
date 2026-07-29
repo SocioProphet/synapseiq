@@ -1,6 +1,6 @@
 import { mapColumnToGlossary } from './column-glossary-scoring.mjs';
-const http = require('node:http');
-const crypto = require('node:crypto');
+import http from 'node:http';
+import crypto from 'node:crypto';
 
 const PORT = Number(process.env.PORT || 8080);
 const LOG_LEVEL = process.env.LOG_LEVEL || 'info';

@@ -1,5 +1,5 @@
 import { mapColumnToGlossary } from './column-glossary-scoring.mjs';
-const http = require('node:http');
+import http from 'node:http';
 
 const PORT = Number(process.env.PORT || 8080);
 
