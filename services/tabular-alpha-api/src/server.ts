@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { mapColumnToGlossary } from '../column-glossary-scoring.mjs';
 
 const PORT = Number(process.env.PORT ?? 8080);
 
@@ -16,7 +17,13 @@ function sendJson(res: http.ServerResponse, status: number, body: unknown) {
 }
 
 function buildEnvelope(payload: Record<string, unknown>) {
-  const candidates = Array.isArray(payload.glossary_candidates) ? payload.glossary_candidates : [];
+  // Real scoring via the vendored scorer. These services previously returned
+  // candidates[0] with confidence 0.5 — the caller did the mapping and the
+  // number meant nothing. Abstains rather than force-matching.
+  const candidates = Array.isArray(payload.glossary_candidates)
+    ? payload.glossary_candidates.filter((c) => typeof c === 'string' && c.trim().length > 0)
+    : [];
+  const mapping = mapColumnToGlossary(String(payload.column_name), candidates);
   return {
     envelope_version: '1.0.0',
     record_kind: 'mapping',
@@ -30,10 +37,15 @@ function buildEnvelope(payload: Record<string, unknown>) {
       processor: 'tabular-alpha-api',
       method: 'rule'
     },
-    confidence: { overall: candidates.length > 0 ? 0.5 : 0.1 },
+    confidence: { overall: mapping.confidence },
     canonical: {
       mapping_type: 'column_to_glossary',
-      target: candidates.length > 0 ? String(candidates[0]) : 'unmapped',
+      target: mapping.target ?? 'unmapped',
+      expanded_column: mapping.expandedColumn,
+      expansions_applied: mapping.expansionsApplied,
+      evidence_type: 'LEXICAL',
+      ranked_candidates: mapping.ranked,
+      ...(mapping.unmappedReason ? { unmapped_reason: mapping.unmappedReason } : {}),
       source_fields: [String(payload.table_name), String(payload.column_name)]
     },
     source_native: payload
