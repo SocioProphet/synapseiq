@@ -42,7 +42,19 @@ const EVIDENCE_ANCHORS = {
 };
 
 function completenessConfidence(payload, kind) {
-  const anchors = EVIDENCE_ANCHORS[kind] || [];
+  const anchors = EVIDENCE_ANCHORS[kind];
+  // Unknown kind is a CONFIGURATION error, not a payload defect — surface it
+  // distinctly so a caller debugging "why is my confidence 0?" is not misdirected
+  // to their payload when EVIDENCE_ANCHORS simply lacks their kind.
+  if (anchors === undefined) {
+    return {
+      overall: 0,
+      evidence_type: 'COMPLETENESS',
+      anchors_expected: [],
+      anchors_present: [],
+      unmapped_reason: "unknown kind '" + kind + "' — EVIDENCE_ANCHORS does not declare it (configuration error, not payload)",
+    };
+  }
   const present = anchors.filter((a) => {
     const v = payload[a];
     return v !== null && v !== undefined && String(v).trim().length > 0;

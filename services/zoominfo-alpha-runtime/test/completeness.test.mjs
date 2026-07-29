@@ -26,7 +26,7 @@ const SERVER = join(HERE, "..", "server.js");
 const src = readFileSync(SERVER, "utf8");
 const startIdx = src.indexOf("const EVIDENCE_ANCHORS");
 const endIdx = src.indexOf("const server = http.createServer");
-assert.ok(startIdx > 0 && endIdx > startIdx, "helpers block not found");
+assert.ok(startIdx >= 0 && endIdx > startIdx, "helpers block not found");
 const block = src.slice(startIdx, endIdx);
 
 // Use mkdtempSync to get a private, unpredictable directory rather than a
@@ -111,4 +111,10 @@ test("EVIDENCE_ANCHORS: every kind states unique, non-empty anchors", () => {
     assert.ok(anchors.length > 0, `${kind} declares no anchors`);
     assert.equal(new Set(anchors).size, anchors.length, `${kind} has duplicate anchors`);
   }
+});
+
+test("unknown kind is reported as a configuration error, not a payload defect", () => {
+  const conf = helpers.completenessConfidence({ any: "value" }, "not-a-real-kind");
+  assert.equal(conf.overall, 0);
+  assert.match(conf.unmapped_reason, /unknown kind|configuration error/);
 });
