@@ -7,6 +7,7 @@ import type {
   ValidationResult,
 } from "@socioprophet/synapseiq-contracts";
 import { generateRecordId, isoNow } from "@socioprophet/synapseiq-utils";
+import { mapColumnToGlossary } from "../column-glossary-scoring";
 
 export class TabularGlossaryAdapter extends BaseAdapter {
   describe(): AdapterDescriptor {
@@ -49,6 +50,15 @@ export class TabularGlossaryAdapter extends BaseAdapter {
   async normalize(record: SourceRecord, _ctx: AdapterContext): Promise<CanonicalEnvelope[]> {
     const payload = record.payload as Record<string, unknown>;
 
+    // Actually rank the candidates. This previously returned glossary_candidates[0]
+    // with a hardcoded confidence of 0.5 — the caller did the mapping and the
+    // number meant nothing. Scoring abstains rather than force-matching, so an
+    // unmapped column is reported as unmapped instead of as the least-bad guess.
+    const candidates = Array.isArray(payload.glossary_candidates)
+      ? payload.glossary_candidates.map(String)
+      : [];
+    const mapping = mapColumnToGlossary(String(payload.column_name), candidates);
+
     return [
       {
         envelope_version: "1.0.0",
@@ -67,14 +77,18 @@ export class TabularGlossaryAdapter extends BaseAdapter {
           method: "rule",
         },
         confidence: {
-          overall: 0.5,
+          overall: mapping.confidence,
         },
         canonical: {
           mapping_type: "column_to_glossary",
-          target: Array.isArray(payload.glossary_candidates) && payload.glossary_candidates.length > 0
-            ? String(payload.glossary_candidates[0])
-            : "unmapped",
+          target: mapping.target ?? "unmapped",
           source_fields: [String(payload.table_name), String(payload.column_name)],
+          // Evidence so a mapping can be audited rather than trusted.
+          expanded_column: mapping.expandedColumn,
+          expansions_applied: mapping.expansionsApplied,
+          evidence_type: "LEXICAL",
+          ranked_candidates: mapping.ranked,
+          ...(mapping.unmappedReason ? { unmapped_reason: mapping.unmappedReason } : {}),
         },
         source_native: payload,
       },
