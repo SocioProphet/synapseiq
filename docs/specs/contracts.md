@@ -41,7 +41,7 @@ The core **event schema** is based on the **UDM (Universal Data Model)**, ensuri
 The framework supports the integration of multiple vendors through **adapters** that normalize and enrich the raw event data to fit the **UDM schema**.
 
 ### Identity-Firmographic Integration
-The **Identity-Firmographic adapter** ingests data from the **Identity-Firmographic platform**, specifically **identity touch events**. The data is normalized to the **UDM schema** and enriched using the **FIBO ontology**.
+The **identity-firmographic adapter** ingests **identity touch events** — page views enriched with the visiting organisation and person — from whichever upstream source is wired in. The data is normalized to the **UDM schema** and enriched using the **FIBO ontology**.
 
 - **Adapter Features**: Normalizes `company_name`, `person_name`, and `event_metadata`.
 - **Enrichment**: Uses **FIBO** for financial data and **UCO** for cybersecurity data.
