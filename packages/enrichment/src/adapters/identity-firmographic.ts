@@ -8,14 +8,14 @@ import type {
 } from "@socioprophet/synapseiq-contracts";
 import { generateRecordId, isoNow } from "@socioprophet/synapseiq-utils";
 
-interface Identity-FirmographicIdentityTouch {
+interface IdentityFirmographicIdentityTouch {
   company_name?: string;
   company_domain?: string;
   person_name?: string;
   page_url?: string;
 }
 
-export class Identity-FirmographicAdapter extends BaseAdapter {
+export class IdentityFirmographicAdapter extends BaseAdapter {
   describe(): AdapterDescriptor {
     return {
       adapter_id: "identity-firmographic-identity-touch",
@@ -53,7 +53,7 @@ export class Identity-FirmographicAdapter extends BaseAdapter {
   }
 
   async normalize(record: SourceRecord, _ctx: AdapterContext): Promise<CanonicalEnvelope[]> {
-    const payload = (record.payload ?? {}) as Identity-FirmographicIdentityTouch;
+    const payload = (record.payload ?? {}) as IdentityFirmographicIdentityTouch;
     const envelopes: CanonicalEnvelope[] = [];
 
     envelopes.push({

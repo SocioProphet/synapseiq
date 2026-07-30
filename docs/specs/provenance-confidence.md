@@ -43,7 +43,7 @@ Recommended record-level structure:
   "inputs": ["record_id_1", "record_id_2"],
   "source_refs": [
     {
-      "source_id": "identity-firmographic-websights",
+      "source_id": "identity-firmographic-websites",
       "source_record_id": "abc123"
     }
   ],
