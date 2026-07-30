@@ -1,4 +1,5 @@
 const http = require('node:http');
+const crypto = require('node:crypto');
 
 const PORT = Number(process.env.PORT || 8080);
 const LOG_LEVEL = process.env.LOG_LEVEL || 'info';
@@ -8,7 +9,7 @@ function now() {
 }
 
 function id() {
-  return `rec_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  return `rec_${crypto.randomUUID()}`;
 }
 
 function log(level, event, fields = {}) {
@@ -171,14 +172,39 @@ const server = http.createServer(async (req, res) => {
 
     try {
       const doc = JSON.parse(raw || '{}');
-      if (!doc.company_name && !doc.person_name) {
+      // Distinguish "field absent" from "field present with empty value". A
+      // truthy check treats both as absent and 400s with a misleading reason;
+      // a caller who intentionally sent `company_name: ""` deserves a distinct
+      // error naming exactly what they did wrong.
+      const hasCompany = Object.prototype.hasOwnProperty.call(doc, 'company_name');
+      const hasPerson = Object.prototype.hasOwnProperty.call(doc, 'person_name');
+      if (!hasCompany && !hasPerson) {
         log('warn', 'validation_failed', { request_id: requestId, reason: 'missing company_name and person_name' });
         return sendJson(res, 400, { error: 'missing company_name and person_name', request_id: requestId });
       }
+      // Presence alone is not enough — a caller sending `{company_name: null}`
+      // or `{company_name: false}` would previously slip past the truthiness
+      // guard AND past the string-empty guard, and the downstream envelope's
+      // `display_name` would be stamped with a non-string. That's a schema
+      // defect the ingestor should refuse, not launder into an entity record.
+      if (hasCompany && (typeof doc.company_name !== 'string' || doc.company_name === '')) {
+        const reason = typeof doc.company_name !== 'string'
+          ? 'company_name must be a non-empty string'
+          : 'company_name provided but empty';
+        log('warn', 'validation_failed', { request_id: requestId, reason });
+        return sendJson(res, 400, { error: reason, request_id: requestId });
+      }
+      if (hasPerson && (typeof doc.person_name !== 'string' || doc.person_name === '')) {
+        const reason = typeof doc.person_name !== 'string'
+          ? 'person_name must be a non-empty string'
+          : 'person_name provided but empty';
+        log('warn', 'validation_failed', { request_id: requestId, reason });
+        return sendJson(res, 400, { error: reason, request_id: requestId });
+      }
 
       const envelopes = [buildEventEnvelope(doc, requestId)];
-      if (doc.company_name) envelopes.push(buildOrgEnvelope(doc, requestId));
-      if (doc.person_name) envelopes.push(buildPersonEnvelope(doc, requestId));
+      if (hasCompany) envelopes.push(buildOrgEnvelope(doc, requestId));
+      if (hasPerson) envelopes.push(buildPersonEnvelope(doc, requestId));
 
       log('info', 'ingest_accepted', { request_id: requestId, envelope_count: envelopes.length });
       return sendJson(res, 202, { accepted: true, request_id: requestId, envelopes });
