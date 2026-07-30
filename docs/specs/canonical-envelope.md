@@ -35,7 +35,7 @@ The purpose of the envelope is to make all records:
   "record_id": "uuidv7",
   "record_ts": "2026-04-13T02:00:00.000Z",
   "source": {
-    "source_id": "zoominfo-websights",
+    "source_id": "identity-firmographic-websites",
     "source_type": "vendor_api|webhook|stream|file|warehouse|document",
     "source_record_id": "vendor-native-id-or-null",
     "source_url": "optional",

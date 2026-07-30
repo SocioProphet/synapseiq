@@ -38,7 +38,7 @@ Purpose:
 Example shape:
 
 ```text
-map vendor.zoominfo.identity_touch {
+map vendor.identity-firmographic.identity_touch {
   source company_name -> canonical.entity.organization.display_name
   source person_name -> canonical.entity.person.display_name
   source url -> canonical.event.page_url

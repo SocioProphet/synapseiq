@@ -16,7 +16,7 @@ The **UDM (Universal Data Model)** provides a standardized framework for definin
 - **isRelatedTo**: Represents connections between **Events** or **Organizations**.
 
 ### UDM Alignment with Vendor Data
-For each vendor, we map raw data to UDM entities and relationships. For example, in the case of **ZoomInfo** data:
+For each vendor, we map raw data to UDM entities and relationships. For example, in the case of **Identity-Firmographic** data:
 - `company_name` maps to **Organization**.
 - `person_name` maps to **Person**.
 - `event_metadata` maps to **Event**.
@@ -24,7 +24,7 @@ For each vendor, we map raw data to UDM entities and relationships. For example,
 This mapping ensures that all incoming data, regardless of source, conforms to the **UDM schema** and can be processed consistently.
 
 ### Data Transformation Pipeline
-1. **Data Ingestion**: Data from multiple vendors (e.g., ZoomInfo, GDELT) is ingested.
+1. **Data Ingestion**: Data from multiple vendors (e.g., Identity-Firmographic, GDELT) is ingested.
 2. **Normalization**: Raw data is mapped to UDM entities and relationships.
 3. **Enrichment**: Data is enriched using domain-specific ontologies (e.g., **FIBO**, **UCO**, **SCO**).
 4. **Storage**: Enriched data is stored in BigQuery, adhering to the UDM schema.

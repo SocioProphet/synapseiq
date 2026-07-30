@@ -51,7 +51,7 @@ Each stream event must contain the following attributes:
 
 ## Topic Structure
 Each Kafka topic should be named according to the **event type** and **domain** to ensure that consumers can filter messages efficiently. For example:
-- `zoominfo-events` for ZoomInfo data
+- `identity-firmographic-events` for Identity-Firmographic data
 - `gdeltr-events` for GDELT data
 
 ## Partitioning and Offset

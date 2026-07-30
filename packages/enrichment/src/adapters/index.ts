@@ -1,3 +1,3 @@
 export { MockAdapter } from './mock';
-export { ZoomInfoAdapter } from './zoominfo';
+export { IdentityFirmographicAdapter } from './identity-firmographic';
 export { TabularGlossaryAdapter } from './tabular-glossary';

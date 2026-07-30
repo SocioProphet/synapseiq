@@ -141,7 +141,7 @@ Adapters may evolve independently, but they must not break the canonical envelop
 
 ## Recommended initial adapters
 
-- ZoomInfo / identity and firmographic enrichment
+- Identity-Firmographic / identity and firmographic enrichment
 - GDELT / event graph enrichment
 - ICEWS / geopolitical event enrichment
 - EventRegistry / clustered event enrichment

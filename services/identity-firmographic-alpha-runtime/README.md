@@ -1,10 +1,10 @@
-# ZoomInfo Alpha Runtime
+# Identity-Firmographic Alpha Runtime
 
-This service is a narrow internal alpha runtime for ZoomInfo-style identity touch ingestion.
+This service is a narrow internal alpha runtime for Identity-Firmographic-style identity touch ingestion.
 
 ## Scope
 
-It accepts a representative ZoomInfo payload and emits canonical:
+It accepts a representative Identity-Firmographic payload and emits canonical:
 - `event` envelope
 - `entity` envelope for organization when present
 - `entity` envelope for person when present
@@ -13,7 +13,7 @@ It accepts a representative ZoomInfo payload and emits canonical:
 
 - `GET /health`
 - `GET /ready`
-- `POST /ingest/zoominfo`
+- `POST /ingest/identity-firmographic`
 
 ## Notes
 

@@ -1,24 +1,24 @@
 import { collect } from "./index";
 import { validateCanonicalEnvelope } from "../../../packages/contracts/src/validators";
-import { ZoomInfoAdapter } from "../../../packages/enrichment/src/adapters/zoominfo";
+import { IdentityFirmographicAdapter } from "../../../packages/enrichment/src/adapters/identity-firmographic";
 import { generateRecordId } from "../../../packages/utils/src";
 import type { CanonicalEnvelope } from "../../../packages/contracts/src/envelope";
 import type { AdapterContext } from "../../../packages/contracts/src/adapter";
 
-export interface ZoomInfoCollectResult {
+export interface IdentityFirmographicCollectResult {
   accepted: boolean;
   envelopes: CanonicalEnvelope[];
 }
 
-export async function collectZoomInfo(
+export async function collectIdentityFirmographic(
   input: unknown,
-): Promise<ZoomInfoCollectResult> {
+): Promise<IdentityFirmographicCollectResult> {
   const ctx: AdapterContext = {
     trace_id: generateRecordId(),
     environment: "dev",
   };
 
-  const adapter = new ZoomInfoAdapter();
+  const adapter = new IdentityFirmographicAdapter();
   const envelopes = await collect(input, ctx, { adapter });
 
   for (const envelope of envelopes) {

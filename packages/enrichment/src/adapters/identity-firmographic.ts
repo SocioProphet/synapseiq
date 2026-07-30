@@ -8,19 +8,19 @@ import type {
 } from "@socioprophet/synapseiq-contracts";
 import { generateRecordId, isoNow } from "@socioprophet/synapseiq-utils";
 
-interface ZoomInfoIdentityTouch {
+interface IdentityFirmographicIdentityTouch {
   company_name?: string;
   company_domain?: string;
   person_name?: string;
   page_url?: string;
 }
 
-export class ZoomInfoAdapter extends BaseAdapter {
+export class IdentityFirmographicAdapter extends BaseAdapter {
   describe(): AdapterDescriptor {
     return {
-      adapter_id: "zoominfo-identity-touch",
-      display_name: "ZoomInfo Identity Touch Adapter",
-      vendor: "zoominfo",
+      adapter_id: "identity-firmographic-identity-touch",
+      display_name: "Identity-Firmographic Identity Touch Adapter",
+      vendor: "identity-firmographic",
       version: "0.1.0",
       supported_source_types: ["webhook", "sync_api"],
       supported_record_kinds: ["event", "entity", "link"],
@@ -37,7 +37,7 @@ export class ZoomInfoAdapter extends BaseAdapter {
 
   validate_source(input: unknown): ValidationResult {
     if (!input || typeof input !== "object") {
-      return { ok: false, errors: ["ZoomInfo input must be an object"] };
+      return { ok: false, errors: ["Identity-Firmographic input must be an object"] };
     }
     return { ok: true };
   }
@@ -45,7 +45,7 @@ export class ZoomInfoAdapter extends BaseAdapter {
   async ingest(input: unknown, _ctx: AdapterContext): Promise<SourceRecord[]> {
     return [
       {
-        source_id: "zoominfo",
+        source_id: "identity-firmographic",
         payload: input,
         received_at: isoNow(),
       },
@@ -53,7 +53,7 @@ export class ZoomInfoAdapter extends BaseAdapter {
   }
 
   async normalize(record: SourceRecord, _ctx: AdapterContext): Promise<CanonicalEnvelope[]> {
-    const payload = (record.payload ?? {}) as ZoomInfoIdentityTouch;
+    const payload = (record.payload ?? {}) as IdentityFirmographicIdentityTouch;
     const envelopes: CanonicalEnvelope[] = [];
 
     envelopes.push({
@@ -69,11 +69,11 @@ export class ZoomInfoAdapter extends BaseAdapter {
       provenance: {
         ingested_at: record.received_at,
         processed_at: isoNow(),
-        processor: "zoominfo-adapter",
+        processor: "identity-firmographic-adapter",
         method: "rule",
       },
       canonical: {
-        event_type: "zoominfo_identity_touch",
+        event_type: "identity_firmographic_identity_touch",
         attributes: {
           page_url: payload.page_url ?? null,
         },
@@ -95,7 +95,7 @@ export class ZoomInfoAdapter extends BaseAdapter {
         provenance: {
           ingested_at: record.received_at,
           processed_at: isoNow(),
-          processor: "zoominfo-adapter",
+          processor: "identity-firmographic-adapter",
           method: "rule",
         },
         canonical: {
@@ -124,7 +124,7 @@ export class ZoomInfoAdapter extends BaseAdapter {
         provenance: {
           ingested_at: record.received_at,
           processed_at: isoNow(),
-          processor: "zoominfo-adapter",
+          processor: "identity-firmographic-adapter",
           method: "rule",
         },
         canonical: {
