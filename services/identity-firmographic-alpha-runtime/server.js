@@ -182,13 +182,24 @@ const server = http.createServer(async (req, res) => {
         log('warn', 'validation_failed', { request_id: requestId, reason: 'missing company_name and person_name' });
         return sendJson(res, 400, { error: 'missing company_name and person_name', request_id: requestId });
       }
-      if (hasCompany && doc.company_name === '') {
-        log('warn', 'validation_failed', { request_id: requestId, reason: 'company_name provided but empty' });
-        return sendJson(res, 400, { error: 'company_name provided but empty', request_id: requestId });
+      // Presence alone is not enough — a caller sending `{company_name: null}`
+      // or `{company_name: false}` would previously slip past the truthiness
+      // guard AND past the string-empty guard, and the downstream envelope's
+      // `display_name` would be stamped with a non-string. That's a schema
+      // defect the ingestor should refuse, not launder into an entity record.
+      if (hasCompany && (typeof doc.company_name !== 'string' || doc.company_name === '')) {
+        const reason = typeof doc.company_name !== 'string'
+          ? 'company_name must be a non-empty string'
+          : 'company_name provided but empty';
+        log('warn', 'validation_failed', { request_id: requestId, reason });
+        return sendJson(res, 400, { error: reason, request_id: requestId });
       }
-      if (hasPerson && doc.person_name === '') {
-        log('warn', 'validation_failed', { request_id: requestId, reason: 'person_name provided but empty' });
-        return sendJson(res, 400, { error: 'person_name provided but empty', request_id: requestId });
+      if (hasPerson && (typeof doc.person_name !== 'string' || doc.person_name === '')) {
+        const reason = typeof doc.person_name !== 'string'
+          ? 'person_name must be a non-empty string'
+          : 'person_name provided but empty';
+        log('warn', 'validation_failed', { request_id: requestId, reason });
+        return sendJson(res, 400, { error: reason, request_id: requestId });
       }
 
       const envelopes = [buildEventEnvelope(doc, requestId)];
