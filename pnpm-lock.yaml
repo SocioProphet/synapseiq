@@ -17,6 +17,15 @@ importers:
         specifier: ^5.6.3
         version: 5.9.3
 
+  packages/agent-classifier:
+    devDependencies:
+      tsx:
+        specifier: ^4.22.4
+        version: 4.22.4
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+
   packages/contract-tests: {}
 
   packages/contracts: {}
