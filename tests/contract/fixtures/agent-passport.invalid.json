@@ -1,0 +1,9 @@
+{
+  "bundle_id": "com.unknown.thing",
+  "agent_class": "anySource",
+  "interrupt_level": "standard",
+  "enriched_at": "2026-07-31T05:00:00Z",
+  "enrichment_source": "synapseiq.agent-classifier",
+  "confidence": 1.4,
+  "classification_method": "guess"
+}

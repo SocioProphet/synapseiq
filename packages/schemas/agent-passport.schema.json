@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SynapseIQAgentPassportEnrichment",
+  "description": "SynapseIQ enrichment view of an AgentPassport. Mirrors the canonical AgentPassport five-class model (SourceOS-Linux/sourceos-spec T0-1) and adds enrichment metadata (source, confidence, classification method). Canonical ownership of the core model belongs in sourceos-spec.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "bundle_id",
+    "agent_class",
+    "interrupt_level",
+    "enriched_at",
+    "enrichment_source",
+    "confidence",
+    "classification_method"
+  ],
+  "properties": {
+    "bundle_id": { "type": "string", "minLength": 1 },
+    "agent_class": {
+      "type": "string",
+      "enum": ["system_core", "intelligence_automation", "app_helper", "legacy_bridge", "third_party"]
+    },
+    "is_daemon": { "type": "boolean" },
+    "is_apple_signed": { "type": "boolean" },
+    "suppress_user_authorization_prompt": { "type": "boolean" },
+    "system_bundle": { "type": "boolean" },
+    "interrupt_level": {
+      "type": "string",
+      "enum": ["critical", "time_sensitive", "high", "standard", "passive"]
+    },
+    "enriched_at": { "type": "string", "format": "date-time" },
+    "enrichment_source": { "type": "string", "minLength": 1 },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "classification_method": {
+      "type": "string",
+      "enum": ["bundle_id_lookup", "flag_inference", "manual"]
+    }
+  }
+}
