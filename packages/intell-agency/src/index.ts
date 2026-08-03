@@ -15,3 +15,5 @@ export * from "./tci.js";
 export * from "./audit-harness.js";
 export * from "./proof-pack.js";
 export * from "./world-model.js";
+
+export * from "./proof-pack-canonical.js";
