@@ -28,5 +28,8 @@ jobs:
       # fail-closed invariants in CI, not just at author time.
       - name: intell-agency governance + red-team
         run: pnpm -C packages/intell-agency test
+      # Mobility suppression engine (privacy-critical fail-closed gate) — enforce in CI.
+      - name: reasoning (mobility suppression) tests
+        run: pnpm -C packages/reasoning test
       - name: Vendored scorer copies match canonical source
         run: node tools/check_vendored_scorer_copies.mjs
