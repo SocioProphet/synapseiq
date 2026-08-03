@@ -4,8 +4,8 @@ import { computeCorridorExposure, type CorridorExposureSignal } from "../src/cor
 import type { SuppressionContext } from "../src/mobility-suppression.ts";
 
 const ctx: SuppressionContext = {
-  targetPackage: "corridor_exposure.v1",
-  allowedPackagesForPurpose: ["corridor_exposure.v1"],
+  targetPackage: "corridor_traffic_exposure.v1",
+  allowedPackagesForPurpose: ["corridor_traffic_exposure.v1"],
 };
 
 function sig(

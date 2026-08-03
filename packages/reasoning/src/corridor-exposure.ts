@@ -16,7 +16,7 @@ export interface CorridorExposureSignal extends MobilitySignalLike {
 }
 
 export interface CorridorExposureResult {
-  package_id: "corridor_exposure.v1";
+  package_id: "corridor_traffic_exposure.v1";
   included: string[];
   suppressed: { signal_id: string; decision: "suppress" | "review"; reasons: string[] }[];
   /** exposure per segment, only from ALLOWed signals (segments with no allowed signal are absent) */
@@ -52,7 +52,7 @@ export function computeCorridorExposure(
   }
 
   return {
-    package_id: "corridor_exposure.v1",
+    package_id: "corridor_traffic_exposure.v1",
     included,
     suppressed,
     per_segment: [...segments].map(([segment_id, v]) => ({ segment_id, ...v })),
