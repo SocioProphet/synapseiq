@@ -29,7 +29,9 @@ jobs:
       - name: intell-agency governance + red-team
         run: pnpm -C packages/intell-agency test
       # Mobility suppression engine (privacy-critical fail-closed gate) — enforce in CI.
-      - name: reasoning (mobility suppression) tests
+      - name: reasoning (mobility suppression + trade-area) tests
         run: pnpm -C packages/reasoning test
+      - name: normalization (mobility normalizer) tests
+        run: pnpm -C packages/normalization test
       - name: Vendored scorer copies match canonical source
         run: node tools/check_vendored_scorer_copies.mjs
