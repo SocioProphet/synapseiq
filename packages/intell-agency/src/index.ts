@@ -14,3 +14,4 @@ export * from "./gci.js";
 export * from "./tci.js";
 export * from "./audit-harness.js";
 export * from "./proof-pack.js";
+export * from "./world-model.js";

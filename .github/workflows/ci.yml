@@ -24,5 +24,9 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Typecheck
         run: pnpm typecheck
+      # BME-TS-SPEC governance core + mandatory red-team suite (§22): enforce the
+      # fail-closed invariants in CI, not just at author time.
+      - name: intell-agency governance + red-team
+        run: pnpm -C packages/intell-agency test
       - name: Vendored scorer copies match canonical source
         run: node tools/check_vendored_scorer_copies.mjs
