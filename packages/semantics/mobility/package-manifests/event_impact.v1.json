@@ -1,0 +1,51 @@
+{
+  "package_id": "event_impact",
+  "version": "v1",
+  "title": "Event Impact and Demand Lift Intelligence",
+  "purpose": {
+    "primary": "aggregate_measurement",
+    "allowed": [
+      "aggregate_measurement",
+      "market_planning",
+      "portfolio_benchmarking"
+    ],
+    "blocked": [
+      "individual_targeting",
+      "restricted_audience_building",
+      "unapproved_investigative_use"
+    ]
+  },
+  "inputs": {
+    "required": [
+      "mobility.footfall.poi.weekly.synthetic.v1",
+      "events.local_demand.v1",
+      "census.lodes.workplace.v1"
+    ],
+    "optional": [
+      "poi.identity.v1",
+      "weather.local_context.v1"
+    ]
+  },
+  "outputs": [
+    "event_lift_score",
+    "baseline_visits",
+    "observed_visits",
+    "lift_ratio",
+    "daypart_shift",
+    "affected_radius",
+    "confidence_band"
+  ],
+  "privacy": {
+    "min_subjects": 50,
+    "min_time_window": "P7D",
+    "suppress_protected_locations": true,
+    "raw_identifiers_allowed": false
+  },
+  "confidence": {
+    "strategy": "weighted_provider_public_baseline"
+  },
+  "lineage": {
+    "required": true,
+    "evidence_bundle_required": true
+  }
+}
