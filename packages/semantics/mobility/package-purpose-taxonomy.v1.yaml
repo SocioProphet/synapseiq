@@ -8,6 +8,7 @@ purposes:
       - retail_trade_area.v1
       - cre_location_underwriting.v1
       - ev_logistics_corridor.v1
+      - site_fit.v1
   market_planning:
     description: Compare geographies, corridors, stores, venues, and trade areas for aggregate planning.
     allowed_for_packages:
