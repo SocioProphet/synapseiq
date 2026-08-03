@@ -11,15 +11,21 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist",
     "lint": "echo 'lint not yet configured'",
-    "test": "echo 'tests not yet configured'",
+    "test": "node --import tsx --test test/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@socioprophet/synapseiq-contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.22.4",
+    "typescript": "6.0.3"
   }
 }

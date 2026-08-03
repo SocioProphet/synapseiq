@@ -7,3 +7,5 @@
  * schema + taxonomy substrate.
  */
 export * from "./mobility-suppression.js";
+
+export * from "./trade-area.js";
