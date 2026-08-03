@@ -178,3 +178,26 @@ Grammar and LSP changes should be validated by:
 ## Rationale
 
 The grammar/LSP layer is how SynapseIQ becomes a programmable semantic platform rather than a fixed pipeline. It enables world-class developer ergonomics and creates a foundation for typed, explainable, and eventually formally verifiable semantic automation.
+
+## Implementation status
+
+Tracked under tranche work-order **T7-18 (Tree-sitter lowering)**.
+
+| DSL                    | Grammar source-of-truth | Reference lowering → durable IR | Status |
+| ---------------------- | ----------------------- | ------------------------------- | ------ |
+| Mapping DSL            | `packages/grammars/tree-sitter-synapseiq-mapping/grammar.js` (versioned via `grammar.json`) | `packages/grammars/src/mapping/` | landed |
+| Enrichment Rule DSL    | — | — | planned |
+| Semantic Query DSL     | — | — | planned |
+| Contract Authoring DSL | — | — | planned |
+
+The Mapping DSL slice lands the versioned tree-sitter grammar (spec-as-code)
+plus a reference recursive-descent lowering into a durable internal
+representation (`MappingDocument`), with a FIPS SHA-256 content hash, an
+error-tolerant parser, golden + malformed-input tests, and a fail-closed CLI
+validation gate (`synapseiq-mapping-lint`). See
+[`packages/grammars/README.md`](../../packages/grammars/README.md).
+
+Remaining T7-18 work is tracked as follow-up issues: native tree-sitter parser
+generation from `grammar.js`, LSP server integration for `.sqmap`
+(diagnostics/symbols/completions over the product surface), and the enrichment
+rule, semantic query, and contract authoring DSLs.

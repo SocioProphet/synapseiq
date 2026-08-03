@@ -1,0 +1,10 @@
+{
+  "name": "synapseiq_mapping",
+  "version": "0.1.0",
+  "title": "SynapseIQ Mapping DSL",
+  "spec": "docs/specs/grammar-lsp.md#1-mapping-dsl",
+  "fileTypes": [".sqmap", ".synapseiq-mapping"],
+  "referenceLowering": "packages/grammars/src/mapping/lower.ts",
+  "status": "grammar-and-reference-lowering-landed; native-parser-generation-pending",
+  "license": "MIT"
+}

@@ -1,0 +1,8 @@
+# Mapping: vendor identity-firmographic identity_touch -> canonical model
+map vendor.identity-firmographic.identity_touch {
+  source company_name -> canonical.entity.organization.display_name
+  source person_name -> canonical.entity.person.display_name
+  source url -> canonical.event.page_url
+  transform company_domain using normalize_domain
+  link canonical.entity.organization to fibo:Corporation when industry in ["banking", "finance"]
+}

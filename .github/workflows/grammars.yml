@@ -1,0 +1,36 @@
+name: grammars
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  grammars:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # pnpm via corepack — pnpm/action-setup is not on the org Actions allowlist
+      # (was causing startup_failure).
+      - name: Enable pnpm via corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.6.0 --activate
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Grammar lowering tests (golden + malformed-input)
+        run: pnpm --filter @socioprophet/synapseiq-grammars test
+      - name: CLI validation gate rejects malformed mapping DSL
+        run: |
+          pnpm --filter @socioprophet/synapseiq-grammars build
+          # Valid fixture must pass (exit 0).
+          node packages/grammars/dist/cli.js packages/grammars/test/fixtures/identity_touch.sqmap
+          # Malformed input must fail the gate (exit non-zero) — teeth that fire.
+          printf 'map v.x { source a canonical.b }\n' > /tmp/malformed.sqmap
+          if node packages/grammars/dist/cli.js /tmp/malformed.sqmap; then
+            echo "CLI validator failed to reject malformed mapping DSL" >&2
+            exit 1
+          fi
